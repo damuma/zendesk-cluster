@@ -38,3 +38,11 @@ def test_resultado_tiene_campos_requeridos(filtrador):
     assert "resultado" in result
     assert "confianza" in result
     assert "metodo" in result
+
+def test_ollama_error_cae_a_descartado(filtrador):
+    """Si Ollama falla, el ticket debe caer a DESCARTADO (safe default)."""
+    with patch("fase1_filtrar.ollama_client.chat", side_effect=Exception("ollama not available")):
+        ticket = {"subject": "Consulta", "body_preview": "Tengo una pregunta sobre mi cuenta"}
+        result = filtrador.clasificar(ticket)
+    assert result["resultado"] == "DESCARTADO"
+    assert result["metodo"] == "ollama_error"
