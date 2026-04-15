@@ -79,13 +79,16 @@ Responde SOLO con JSON válido:
 Si accion es ASIGNAR_EXISTENTE, cluster_nuevo puede ser null.
 Si accion es CREAR_NUEVO, cluster_id puede ser null."""
 
-        resp = self.openai.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.1,
-        )
-        data = json.loads(resp.choices[0].message.content)
+        try:
+            resp = self.openai.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.1,
+            )
+            data = json.loads(resp.choices[0].message.content)
+        except Exception:
+            data = {"accion": "CREAR_NUEVO", "cluster_nuevo": None, "confianza": 0.0, "keywords_detectados": [], "jira_query": ""}
 
         jira_query = data.get("jira_query", " ".join(data.get("keywords_detectados", [])[:3]))
         jira_candidatos = []
@@ -98,8 +101,10 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
 
         now = datetime.now(timezone.utc).isoformat()
 
-        if data["accion"] == "ASIGNAR_EXISTENTE":
-            cluster_id = data["cluster_id"]
+        accion = data.get("accion", "CREAR_NUEVO")
+
+        if accion == "ASIGNAR_EXISTENTE":
+            cluster_id = data.get("cluster_id")
             cluster = next((c for c in clusters if c["cluster_id"] == cluster_id), None)
             if cluster:
                 cluster["ticket_count"] = cluster.get("ticket_count", 0) + 1
@@ -109,7 +114,11 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
                 existing_jira = set(cluster.get("jira_candidatos", []))
                 cluster["jira_candidatos"] = list(existing_jira | set(jira_candidatos))
                 self.storage.save_cluster(cluster)
-        else:
+            else:
+                # cluster_id from LLM not found — create a new cluster instead
+                accion = "CREAR_NUEVO"
+
+        if accion == "CREAR_NUEVO":
             cluster_id = self._next_cluster_id(clusters)
             nuevo = data.get("cluster_nuevo") or {}
             cluster = {

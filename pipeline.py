@@ -52,39 +52,43 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
     clusters_antes = len(storage.get_clusters())
 
     for ticket in tickets:
-        f1 = filtrador.clasificar(ticket)
-        ticket["fase1_resultado"] = f1["resultado"]
-        ticket["fase1_confianza"] = f1["confianza"]
-        ticket["fase1_modelo"] = f1["metodo"]
+        try:
+            f1 = filtrador.clasificar(ticket)
+            ticket["fase1_resultado"] = f1["resultado"]
+            ticket["fase1_confianza"] = f1["confianza"]
+            ticket["fase1_modelo"] = f1["metodo"]
 
-        if f1["resultado"] == "DESCARTADO":
-            stats["descartados"] += 1
+            if f1["resultado"] == "DESCARTADO":
+                stats["descartados"] += 1
+                if not dry_run:
+                    storage.save_ticket(ticket)
+                continue
+
+            stats["tecnicos"] += 1
+
+            f2 = preclasificador.preclasificar(ticket)
+            ticket["fase2_anclas"] = f2["anclas"]
+
+            if f2["cluster_candidato"]:
+                stats["ancla_directa"] += 1
+                ticket["fase3_cluster_id"] = f2["cluster_candidato"]
+                ticket["fase3_severidad"] = f2["severidad_estimada"]
+                ticket["fase3_jira_candidatos"] = []
+                ticket["procesado_at"] = datetime.now(timezone.utc).isoformat()
+            else:
+                stats["llm"] += 1
+                f3 = clusterizador.clusterizar(ticket)
+                ticket["fase3_cluster_id"] = f3["cluster_id"]
+                ticket["fase3_resumen_llm"] = f3["resumen_llm"]
+                ticket["fase3_severidad"] = f3["severidad"]
+                ticket["fase3_jira_candidatos"] = f3["jira_candidatos"]
+                ticket["procesado_at"] = datetime.now(timezone.utc).isoformat()
+
             if not dry_run:
                 storage.save_ticket(ticket)
+        except Exception as e:
+            print(f"   ⚠️  Error procesando ticket {ticket.get('zendesk_id')}: {e}")
             continue
-
-        stats["tecnicos"] += 1
-
-        f2 = preclasificador.preclasificar(ticket)
-        ticket["fase2_anclas"] = f2["anclas"]
-
-        if f2["cluster_candidato"]:
-            stats["ancla_directa"] += 1
-            ticket["fase3_cluster_id"] = f2["cluster_candidato"]
-            ticket["fase3_severidad"] = f2["severidad_estimada"]
-            ticket["fase3_jira_candidatos"] = []
-            ticket["procesado_at"] = datetime.now(timezone.utc).isoformat()
-        else:
-            stats["llm"] += 1
-            f3 = clusterizador.clusterizar(ticket)
-            ticket["fase3_cluster_id"] = f3["cluster_id"]
-            ticket["fase3_resumen_llm"] = f3["resumen_llm"]
-            ticket["fase3_severidad"] = f3["severidad"]
-            ticket["fase3_jira_candidatos"] = f3["jira_candidatos"]
-            ticket["procesado_at"] = datetime.now(timezone.utc).isoformat()
-
-        if not dry_run:
-            storage.save_ticket(ticket)
 
     clusters_despues = len(storage.get_clusters())
     stats["clusters_nuevos"] = clusters_despues - clusters_antes

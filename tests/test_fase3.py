@@ -108,3 +108,40 @@ def test_jira_error_no_bloquea(tmp_clusterizador):
     result = clusterizador.clusterizar(ticket)
     assert result["cluster_id"] == "CLU-001"
     assert result["jira_candidatos"] == []
+
+
+def test_phantom_cluster_falls_through_to_crear_nuevo(tmp_clusterizador):
+    """If LLM returns ASIGNAR_EXISTENTE with a non-existent cluster_id, create a new cluster."""
+    clusterizador, storage, mock_openai = tmp_clusterizador
+    mock_openai.chat.completions.create.return_value = _make_openai_response({
+        "accion": "ASIGNAR_EXISTENTE",
+        "cluster_id": "CLU-999",  # does not exist in storage
+        "cluster_nuevo": None,
+        "confianza": 0.75,
+        "keywords_detectados": ["stripe"],
+        "jira_query": "stripe",
+    })
+    ticket = {"zendesk_id": 5001, "subject": "Stripe error", "body_preview": "Stripe no funciona"}
+    result = clusterizador.clusterizar(ticket)
+    # Should have created a new cluster instead of silently failing
+    clusters = storage.get_clusters()
+    assert len(clusters) == 1
+    assert result["cluster_id"] != "CLU-999"
+    assert clusters[0]["ticket_ids"] == [5001]
+
+
+def test_missing_accion_key_falls_through_to_crear_nuevo(tmp_clusterizador):
+    """If GPT-4o returns JSON without 'accion', treat as CREAR_NUEVO."""
+    clusterizador, storage, mock_openai = tmp_clusterizador
+    mock_openai.chat.completions.create.return_value = _make_openai_response({
+        # no "accion" key — GPT hallucination
+        "cluster_nuevo": {"nombre": "Error login", "sistema": "auth", "tipo_problema": "login", "severidad": "MEDIUM", "resumen": ""},
+        "confianza": 0.6,
+        "keywords_detectados": ["login"],
+        "jira_query": "login",
+    })
+    ticket = {"zendesk_id": 6001, "subject": "No puedo entrar", "body_preview": "Login falla"}
+    result = clusterizador.clusterizar(ticket)
+    clusters = storage.get_clusters()
+    assert len(clusters) == 1
+    assert result["cluster_id"] == "CLU-001"

@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import base64
 import urllib.request
@@ -33,7 +34,7 @@ class JiraClient:
 
     def buscar_tickets_crm(self, query_text: str, max_results: int = 5) -> list[dict]:
         """Busca tickets en Jira proyecto TEC con label CRM que coincidan con el texto."""
-        safe_query = query_text.replace('"', ' ').replace("'", ' ')[:100]
+        safe_query = re.sub(r"[^\w\s]", " ", query_text)[:100]
         jql = f'project = {self.project} AND labels = "CRM" AND text ~ "{safe_query}" ORDER BY created DESC'
         encoded_jql = urllib.parse.quote(jql)
         data = self._get(f"/search?jql={encoded_jql}&maxResults={max_results}&fields=summary,status,priority,labels")

@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 import streamlit as st
 from storage import Storage
 
@@ -61,8 +62,9 @@ def render():
         days = st.number_input("Días de histórico", min_value=1, max_value=90, value=30)
         if st.button("🔄 Regenerar conceptos.json"):
             with st.spinner(f"Procesando {days} días de tickets..."):
+                script = str(Path(__file__).parent.parent / "fase0_explorar.py")
                 result = subprocess.run(
-                    [sys.executable, "fase0_explorar.py", "--days", str(days)],
+                    [sys.executable, script, "--days", str(days)],
                     capture_output=True, text=True
                 )
             if result.returncode == 0:
