@@ -13,7 +13,7 @@ def test_get_tickets_returns_list():
         client = ZendeskClient(subdomain="test", email="a@b.com", token="tok")
         tickets = client.get_tickets(days_back=1)
     assert isinstance(tickets, list)
-    assert tickets[0]["id"] == 1
+    assert tickets[0]["zendesk_id"] == 1
 
 
 def test_get_ticket_single():
@@ -24,4 +24,4 @@ def test_get_ticket_single():
         mock_get.return_value.status_code = 200
         client = ZendeskClient(subdomain="test", email="a@b.com", token="tok")
         ticket = client.get_ticket(42)
-    assert ticket["id"] == 42
+    assert ticket["zendesk_id"] == 42

@@ -31,7 +31,7 @@ class ZendeskClient:
         return [self._normalize(t) for t in tickets]
 
     def get_tickets_since(self, since_hours: int = 24) -> list[dict]:
-        return self.get_tickets(days_back=since_hours / 24)
+        return self.get_tickets(days_back=since_hours // 24)
 
     def get_ticket(self, ticket_id: int) -> dict:
         resp = requests.get(f"{self.base_url}/tickets/{ticket_id}.json", auth=self.auth)
@@ -41,7 +41,6 @@ class ZendeskClient:
     def _normalize(self, t: dict) -> dict:
         return {
             "zendesk_id": t["id"],
-            "id": t["id"],  # keep raw id so tests asserting ticket["id"] still pass
             "created_at": t.get("created_at"),
             "updated_at": t.get("updated_at"),
             "subject": t.get("subject", ""),
