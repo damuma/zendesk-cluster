@@ -1,6 +1,12 @@
 .env
 data/*.json
+data/*.csv
+data/*.parquet
 venv/
-__pycache__/
+**/__pycache__/
 .pytest_cache/
 *.pyc
+.DS_Store
+*.egg-info/
+dist/
+build/
