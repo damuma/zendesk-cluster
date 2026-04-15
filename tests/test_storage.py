@@ -35,3 +35,17 @@ def test_save_and_get_conceptos(tmp_storage):
     loaded = tmp_storage.get_conceptos()
     assert loaded["version"] == "1.0"
     assert "stripe" in loaded["sistemas"]
+
+def test_upsert_ticket_no_duplicates(tmp_storage):
+    tmp_storage.save_ticket({"zendesk_id": 1, "subject": "Original"})
+    tmp_storage.save_ticket({"zendesk_id": 1, "subject": "Updated"})
+    tickets = tmp_storage.get_tickets()
+    assert len(tickets) == 1
+    assert tickets[0]["subject"] == "Updated"
+
+def test_upsert_cluster_no_duplicates(tmp_storage):
+    tmp_storage.save_cluster({"cluster_id": "CLU-001", "estado": "abierto"})
+    tmp_storage.save_cluster({"cluster_id": "CLU-001", "estado": "cerrado"})
+    clusters = tmp_storage.get_clusters()
+    assert len(clusters) == 1
+    assert clusters[0]["estado"] == "cerrado"
