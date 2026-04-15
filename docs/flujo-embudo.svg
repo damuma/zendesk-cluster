@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="920" height="680" viewBox="0 0 920 680" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+
+  <!-- Background -->
+  <rect width="920" height="680" fill="#f8f9fa" rx="12"/>
+
+  <!-- Title -->
+  <text x="460" y="38" text-anchor="middle" font-size="18" font-weight="bold" fill="#1a1a2e">Flujo del Embudo de Clasificación</text>
+  <text x="460" y="58" text-anchor="middle" font-size="12" fill="#666">Procesamiento de tickets Zendesk — elDiario.es</text>
+
+  <!-- ── ENTRADA ── -->
+  <rect x="310" y="75" width="300" height="55" rx="10" fill="#17a589" opacity="0.2" stroke="#17a589" stroke-width="2"/>
+  <text x="460" y="98" text-anchor="middle" font-size="13" font-weight="bold" fill="#0e6655">Ticket nuevo en Zendesk</text>
+  <text x="460" y="116" text-anchor="middle" font-size="11" fill="#333">Email de usuario · Texto libre</text>
+
+  <!-- Arrow down -->
+  <line x1="460" y1="130" x2="460" y2="155" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ── FASE 0 BOX ── -->
+  <rect x="30" y="155" width="200" height="90" rx="10" fill="#f3e5f5" stroke="#9c27b0" stroke-width="2"/>
+  <text x="130" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#6a1b9a">FASE 0</text>
+  <text x="130" y="197" text-anchor="middle" font-size="11" fill="#333">Exploración inicial</text>
+  <text x="130" y="213" text-anchor="middle" font-size="10" fill="#555">spaCy · NLP local</text>
+  <text x="130" y="228" text-anchor="middle" font-size="10" fill="#6a1b9a">→ genera conceptos.json</text>
+  <!-- Executed once label -->
+  <rect x="40" y="238" width="180" height="18" rx="4" fill="#9c27b0" opacity="0.15"/>
+  <text x="130" y="251" text-anchor="middle" font-size="9" fill="#6a1b9a">Se ejecuta UNA VEZ (o al recalibrar)</text>
+
+  <!-- conceptos.json box -->
+  <rect x="250" y="175" width="140" height="50" rx="8" fill="#fff" stroke="#9c27b0" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="320" y="198" text-anchor="middle" font-size="11" font-weight="bold" fill="#6a1b9a">conceptos.json</text>
+  <text x="320" y="214" text-anchor="middle" font-size="10" fill="#555">Taxonomía de señales</text>
+
+  <!-- Arrow fase0 → conceptos -->
+  <line x1="230" y1="200" x2="250" y2="200" stroke="#9c27b0" stroke-width="1.5" marker-end="url(#arrPurple)"/>
+  <!-- Arrow conceptos → fase1 input -->
+  <line x1="390" y1="200" x2="430" y2="200" stroke="#9c27b0" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <!-- ── FASE 1 ── -->
+  <rect x="310" y="155" width="300" height="90" rx="10" fill="#fff3e0" stroke="#e65100" stroke-width="2"/>
+  <text x="460" y="180" text-anchor="middle" font-size="12" font-weight="bold" fill="#bf360c">FASE 1 · ¿Es un problema técnico?</text>
+  <text x="460" y="198" text-anchor="middle" font-size="10" fill="#333">1º Reglas de señales fuertes (conceptos.json)</text>
+  <text x="460" y="214" text-anchor="middle" font-size="10" fill="#333">2º Si dudoso → Ollama local (Gemma 9B)</text>
+  <text x="460" y="230" text-anchor="middle" font-size="10" fill="#e65100">Confianza mínima requerida: 0.65</text>
+
+  <!-- Diamond decision -->
+  <polygon points="460,260 510,285 460,310 410,285" fill="#fff3e0" stroke="#e65100" stroke-width="2"/>
+  <text x="460" y="289" text-anchor="middle" font-size="10" font-weight="bold" fill="#bf360c">¿Técnico?</text>
+
+  <!-- Arrow fase1 → diamond -->
+  <line x1="460" y1="245" x2="460" y2="260" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- NO branch → Descartado -->
+  <line x1="510" y1="285" x2="630" y2="285" stroke="#e53935" stroke-width="2" marker-end="url(#arrRed)"/>
+  <text x="570" y="278" text-anchor="middle" font-size="10" fill="#c62828">NO</text>
+  <rect x="630" y="262" width="130" height="48" rx="8" fill="#ffebee" stroke="#e53935" stroke-width="1.5"/>
+  <text x="695" y="282" text-anchor="middle" font-size="11" font-weight="bold" fill="#c62828">DESCARTADO</text>
+  <text x="695" y="298" text-anchor="middle" font-size="10" fill="#555">Guardado sin cluster</text>
+  <text x="695" y="311" text-anchor="middle" font-size="10" fill="#555">(baja voluntaria, etc.)</text>
+
+  <!-- YES branch down -->
+  <line x1="460" y1="310" x2="460" y2="335" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="472" y="325" font-size="10" fill="#2e7d32">SÍ</text>
+
+  <!-- ── FASE 2 ── -->
+  <rect x="310" y="335" width="300" height="90" rx="10" fill="#fff8e1" stroke="#f57c00" stroke-width="2"/>
+  <text x="460" y="358" text-anchor="middle" font-size="12" font-weight="bold" fill="#e65100">FASE 2 · Pre-clasificación por anclas</text>
+  <text x="460" y="376" text-anchor="middle" font-size="10" fill="#333">Matching keywords en conceptos.json</text>
+  <text x="460" y="392" text-anchor="middle" font-size="10" fill="#333">Asigna: sistema + tipo + severidad</text>
+  <text x="460" y="408" text-anchor="middle" font-size="10" fill="#f57c00">stripe · paypal · iban · login · error...</text>
+
+  <!-- Anchor labels -->
+  <rect x="30" y="355" width="200" height="70" rx="8" fill="white" stroke="#f57c00" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="130" y="374" text-anchor="middle" font-size="10" font-weight="bold" fill="#e65100">Sistemas (anclas)</text>
+  <text x="50" y="390" font-size="9" fill="#555">• stripe / paypal / sepa_iban</text>
+  <text x="50" y="404" font-size="9" fill="#555">• auth_login / crm_frontend</text>
+  <text x="50" y="418" font-size="9" fill="#555">• cobro_indebido / baja_no_proc.</text>
+  <line x1="230" y1="390" x2="310" y2="390" stroke="#f57c00" stroke-width="1" stroke-dasharray="3,2"/>
+
+  <!-- Diamond decision 2 -->
+  <polygon points="460,440 510,465 460,490 410,465" fill="#fff8e1" stroke="#f57c00" stroke-width="2"/>
+  <text x="460" y="462" text-anchor="middle" font-size="10" font-weight="bold" fill="#e65100">¿Ancla</text>
+  <text x="460" y="474" text-anchor="middle" font-size="10" font-weight="bold" fill="#e65100">clara?</text>
+
+  <!-- Arrow fase2 → diamond -->
+  <line x1="460" y1="425" x2="460" y2="440" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- YES → direct cluster -->
+  <line x1="510" y1="465" x2="640" y2="465" stroke="#2e7d32" stroke-width="2" marker-end="url(#arrGreen)"/>
+  <text x="575" y="458" text-anchor="middle" font-size="10" fill="#2e7d32">SÍ (ancla fuerte)</text>
+  <rect x="640" y="442" width="130" height="48" rx="8" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="705" y="460" text-anchor="middle" font-size="11" font-weight="bold" fill="#1b5e20">Cluster directo</text>
+  <text x="705" y="476" text-anchor="middle" font-size="10" fill="#555">Sin LLM remoto</text>
+  <text x="705" y="490" text-anchor="middle" font-size="10" fill="#2e7d32">0 coste API</text>
+
+  <!-- NO → Fase 3 -->
+  <line x1="460" y1="490" x2="460" y2="515" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="472" y="505" font-size="10" fill="#1565c0">Dudoso</text>
+
+  <!-- ── FASE 3 ── -->
+  <rect x="310" y="515" width="300" height="90" rx="10" fill="#e3f2fd" stroke="#1565c0" stroke-width="2"/>
+  <text x="460" y="538" text-anchor="middle" font-size="12" font-weight="bold" fill="#0d47a1">FASE 3 · Clustering fino con LLM</text>
+  <text x="460" y="556" text-anchor="middle" font-size="10" fill="#333">GPT-4o · Solo tickets dudosos</text>
+  <text x="460" y="572" text-anchor="middle" font-size="10" fill="#333">Contexto clusters existentes</text>
+  <text x="460" y="588" text-anchor="middle" font-size="10" fill="#1565c0">Cross-referencia Jira (proyecto TEC)</text>
+  <text x="460" y="604" text-anchor="middle" font-size="10" fill="#0d47a1">~30-40% de tickets técnicos</text>
+
+  <!-- Arrow fase3 → output -->
+  <line x1="460" y1="605" x2="460" y2="630" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
+
+  <!-- ── OUTPUT ── -->
+  <rect x="310" y="630" width="300" height="40" rx="8" fill="#1565c0" opacity="0.85"/>
+  <text x="460" y="648" text-anchor="middle" font-size="11" font-weight="bold" fill="white">Ticket enriquecido → Cluster asignado</text>
+  <text x="460" y="663" text-anchor="middle" font-size="10" fill="#bbdefb">cluster_id · severidad · jira_candidatos · resumen</text>
+
+  <!-- Arrow cluster direct → output (merge) -->
+  <line x1="705" y1="490" x2="705" y2="650" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <line x1="705" y1="650" x2="610" y2="650" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrGreen)"/>
+
+  <!-- Defs -->
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#555"/>
+    </marker>
+    <marker id="arrRed" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#e53935"/>
+    </marker>
+    <marker id="arrGreen" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#2e7d32"/>
+    </marker>
+    <marker id="arrPurple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#9c27b0"/>
+    </marker>
+    <marker id="arrBlue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#1565c0"/>
+    </marker>
+  </defs>
+</svg>
