@@ -12,10 +12,13 @@ class Storage:
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
     # ── JSON helpers ──────────────────────────────────────────
+    # Files that hold a single dict (not a list)
+    _DICT_FILES = {"conceptos.json"}
+
     def _read(self, filename: str) -> list | dict:
         path = self.data_dir / filename
         if not path.exists():
-            return [] if filename.endswith("s.json") else {}
+            return {} if filename in self._DICT_FILES else []
         with open(path) as f:
             return json.load(f)
 
