@@ -1,6 +1,16 @@
 import os
+from datetime import date, datetime, timezone
 import streamlit as st
 from storage import Storage
+
+
+def _parse_date(iso: str | None) -> date | None:
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
 
 SEVERIDAD_COLOR = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 TENDENCIA_ICON = {"creciente": "↑", "estable": "→", "decreciente": "↓", "nuevo": "✨"}
@@ -182,31 +192,73 @@ def render():
         st.info("No hay clusters activos. Ejecuta el pipeline: `python pipeline.py --horas 24`")
         return
 
-    # ── Métricas globales ──────────────────────────────────────
-    tecnicos  = [t for t in all_tickets if t.get("fase1_resultado") == "TECNICO"]
-    descartados = len(all_tickets) - len(tecnicos)
-    total_en_clusters = sum(c.get("ticket_count", 0) for c in clusters)
+    # ── Rango de fechas disponible ─────────────────────────────
+    ticket_dates = [_parse_date(t.get("created_at")) for t in all_tickets]
+    ticket_dates = [d for d in ticket_dates if d]
+    data_min = min(ticket_dates) if ticket_dates else date.today()
+    data_max = max(ticket_dates) if ticket_dates else date.today()
+
+    st.caption(
+        f"📅 Datos disponibles: **{data_min.strftime('%d %b %Y')}** → **{data_max.strftime('%d %b %Y')}**"
+        f"  ·  {(data_max - data_min).days + 1} días"
+    )
+
+    # ── Selector de rango ──────────────────────────────────────
+    date_range = st.date_input(
+        "Rango de fechas",
+        value=(data_min, data_max),
+        min_value=data_min,
+        max_value=data_max,
+        format="DD/MM/YYYY",
+    )
+    # date_input returns a tuple when range mode, or a single date while selecting
+    if isinstance(date_range, (list, tuple)) and len(date_range) == 2:
+        rango_inicio, rango_fin = date_range
+    else:
+        rango_inicio, rango_fin = data_min, data_max
+
+    # ── Filtrar tickets por fecha ──────────────────────────────
+    tickets_en_rango = {
+        t["zendesk_id"]
+        for t in all_tickets
+        if (d := _parse_date(t.get("created_at"))) and rango_inicio <= d <= rango_fin
+    }
+    tickets_filtrados = [t for t in all_tickets if t.get("zendesk_id") in tickets_en_rango]
+
+    # ── Métricas (sobre el rango seleccionado) ─────────────────
+    tecnicos    = [t for t in tickets_filtrados if t.get("fase1_resultado") == "TECNICO"]
+    descartados = len(tickets_filtrados) - len(tecnicos)
+
+    # Filtrar clusters: solo los que tienen al menos 1 ticket en el rango
+    clusters_en_rango = [
+        c for c in clusters
+        if any(tid in tickets_en_rango for tid in c.get("ticket_ids", []))
+        or (not c.get("ticket_ids") and _parse_date(c.get("created_at")) and
+            rango_inicio <= _parse_date(c.get("created_at")) <= rango_fin)
+    ]
+    total_en_clusters = sum(c.get("ticket_count", 0) for c in clusters_en_rango)
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total tickets", len(all_tickets))
+    m1.metric("Total tickets", len(tickets_filtrados),
+              delta=f"{len(tickets_filtrados) - len(all_tickets):+d}" if len(tickets_filtrados) != len(all_tickets) else None)
     m2.metric("Técnicos", len(tecnicos))
     m3.metric("Descartados", descartados)
-    m4.metric("Clusters activos", len(clusters))
+    m4.metric("Clusters activos", len(clusters_en_rango))
     m5.metric("Tickets en clusters", total_en_clusters)
     st.markdown("---")
 
-    # ── Filtros ────────────────────────────────────────────────
+    # ── Filtros de cluster ─────────────────────────────────────
     col1, col2, col3 = st.columns(3)
     with col1:
         filtro_sev = st.selectbox("Severidad", ["Todas", "HIGH", "MEDIUM", "LOW"])
     with col2:
-        sistemas_disponibles = list({c.get("sistema", "desconocido") for c in clusters})
+        sistemas_disponibles = list({c.get("sistema", "desconocido") for c in clusters_en_rango})
         filtro_sis = st.selectbox("Sistema", ["Todos"] + sorted(sistemas_disponibles))
     with col3:
         if st.button("🔄 Actualizar"):
             st.rerun()
 
-    filtered = clusters
+    filtered = clusters_en_rango
     if filtro_sev != "Todas":
         filtered = [c for c in filtered if c.get("severidad") == filtro_sev]
     if filtro_sis != "Todos":
