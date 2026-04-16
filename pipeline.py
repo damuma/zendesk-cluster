@@ -60,6 +60,7 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
 
             if f1["resultado"] == "DESCARTADO":
                 stats["descartados"] += 1
+                ticket["procesado_at"] = datetime.now(timezone.utc).isoformat()
                 if not dry_run:
                     storage.save_ticket(ticket)
                 continue
