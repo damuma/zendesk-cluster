@@ -18,7 +18,14 @@ PRIORITY_ICON = {"urgent": "🚨", "high": "🔴", "normal": "🟡", "low": "⚪
 
 _TOOLTIP_CSS = """
 <style>
-/* Reset font inside every tooltip to override Streamlit cascade */
+/* Let Streamlit's markdown container overflow so absolute tooltips are visible */
+div[data-testid="stMarkdownContainer"],
+div[data-testid="stMarkdownContainer"] > div,
+.stMarkdown {
+    overflow: visible !important;
+}
+
+/* ── Chip + tooltip ─────────────────────────────────────── */
 .zt-ticket,
 .zt-ticket * {
     font-size: 12px !important;
@@ -30,73 +37,74 @@ _TOOLTIP_CSS = """
     position: relative;
     display: inline-block;
     vertical-align: middle;
-    margin: 2px 4px;
+    margin: 2px 6px;
 }
-.zt-ticket a {
+/* The chip link */
+.zt-chip {
     color: #4fa3e0 !important;
     text-decoration: none !important;
     font-family: monospace !important;
     font-size: 13px !important;
     font-weight: 600 !important;
 }
-.zt-ticket a:hover {
-    text-decoration: underline !important;
-}
+.zt-chip:hover { text-decoration: underline !important; }
 
-/* Tooltip bubble */
+/* ── Tooltip bubble (absolute, above chip) ──────────────── */
 .zt-ticket .zt-tip {
     visibility: hidden;
     opacity: 0;
     width: 400px;
-    max-width: 80vw;
+    max-width: min(400px, 90vw);
     background: #1a1a2e;
     color: #e0e0e0 !important;
     border-radius: 10px;
-    padding: 14px 16px;
-    position: fixed;          /* fixed avoids clipping by any parent */
-    z-index: 99999;
+    padding: 14px 16px 10px;
+    position: absolute;
+    bottom: calc(100% + 10px);  /* always above the chip */
+    left: 0;                     /* anchor to chip left — never overflows left */
+    z-index: 9999;
     box-shadow: 0 6px 24px rgba(0,0,0,0.5);
-    transition: opacity 0.12s ease;
-    pointer-events: none;
+    pointer-events: auto;        /* allow clicks inside (for the Zendesk link) */
     white-space: normal;
     word-break: break-word;
-    /* Position set via JS on hover; default offsets are overridden below */
-    top: 0; left: 0;
+    /* Hide with delay so mouse can travel from chip to tooltip */
+    transition: opacity 0.12s ease 0s, visibility 0s ease 0s;
 }
-.zt-ticket:hover .zt-tip {
+/* Keep visible while hovering chip OR the tooltip itself */
+.zt-ticket:hover .zt-tip,
+.zt-ticket .zt-tip:hover {
     visibility: visible;
     opacity: 1;
 }
-
-/* Arrow */
+/* Arrow pointing down */
 .zt-tip::after {
     content: "";
     position: absolute;
     top: 100%;
-    left: 20px;
+    left: 18px;
     border: 7px solid transparent;
     border-top-color: #1a1a2e;
 }
 
-/* Inner layout */
+/* ── Tooltip internals ──────────────────────────────────── */
 .zt-tip .zt-subject {
     font-weight: 700 !important;
     font-size: 13px !important;
     color: #ffffff !important;
-    margin-bottom: 7px !important;
+    margin-bottom: 6px !important;
     padding-bottom: 6px !important;
     border-bottom: 1px solid #3a3a5a !important;
 }
 .zt-tip .zt-body {
     color: #b8b8d0 !important;
-    margin-bottom: 9px !important;
+    margin-bottom: 8px !important;
     font-size: 11.5px !important;
 }
 .zt-tip .zt-meta {
     font-size: 11px !important;
     color: #888 !important;
     border-top: 1px solid #3a3a5a !important;
-    padding-top: 7px !important;
+    padding-top: 6px !important;
     margin-top: 4px !important;
 }
 .zt-tip .zt-tags {
@@ -104,31 +112,24 @@ _TOOLTIP_CSS = """
     font-size: 11px !important;
     color: #aaa !important;
 }
+.zt-tip .zt-open {
+    display: inline-block !important;
+    margin-top: 8px !important;
+    padding: 3px 8px !important;
+    background: #2a2a4a !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    color: #7ab8f5 !important;
+    text-decoration: none !important;
+    border: 1px solid #4a4a6a !important;
+}
+.zt-tip .zt-open:hover {
+    background: #3a3a5a !important;
+    color: #aad4ff !important;
+}
 .zt-conf-ok   { color: #4caf50 !important; }
 .zt-conf-warn { color: #ff9800 !important; }
 </style>
-
-<script>
-// Reposition tooltips to avoid viewport clipping
-document.addEventListener("mouseover", function(e) {
-    const chip = e.target.closest(".zt-ticket");
-    if (!chip) return;
-    const tip = chip.querySelector(".zt-tip");
-    if (!tip) return;
-    const rect = chip.getBoundingClientRect();
-    const tipW = 400;
-    const margin = 8;
-    let left = rect.left;
-    // Clamp to viewport
-    if (left + tipW > window.innerWidth - margin) {
-        left = window.innerWidth - tipW - margin;
-    }
-    if (left < margin) left = margin;
-    tip.style.left = left + "px";
-    tip.style.top  = (rect.top - 8) + "px";
-    tip.style.transform = "translateY(-100%)";
-});
-</script>
 """
 
 
@@ -165,7 +166,7 @@ def _ticket_html(t: dict, zendesk_subdomain: str) -> str:
 
     return (
         f'<span class="zt-ticket">'
-        f'  <a href="{url}" target="_blank">#{tid}</a>'
+        f'  <a class="zt-chip" href="{url}" target="_blank">#{tid}</a>'
         f'  <span class="zt-tip">'
         f'    <div class="zt-subject">{subject}</div>'
         f'    <div class="zt-body">{body}</div>'
@@ -174,6 +175,7 @@ def _ticket_html(t: dict, zendesk_subdomain: str) -> str:
         f'      <span class="{conf_cls}">{conf_icon} Fase 1: {conf_pct} ({metodo})</span>'
         f'    </div>'
         f'    <div class="zt-tags">🏷️ {tags_str}</div>'
+        f'    <a class="zt-open" href="{url}" target="_blank">🔗 Abrir en Zendesk →</a>'
         f'  </span>'
         f'</span>'
     )
