@@ -55,13 +55,19 @@ class ZendeskClient:
         return resp  # unreachable, satisfies type checker
 
     def _normalize(self, t: dict) -> dict:
+        ticket_id = t.get("id")
         return {
-            "zendesk_id": t.get("id"),
+            "zendesk_id": ticket_id,
+            "zendesk_url": f"https://{self.subdomain}.zendesk.com/agent/tickets/{ticket_id}",
             "created_at": t.get("created_at"),
             "updated_at": t.get("updated_at"),
             "subject": t.get("subject", ""),
             "body_preview": (t.get("description") or "")[:1000],
             "status": t.get("status"),
+            "priority": t.get("priority"),           # low / normal / high / urgent
+            "ticket_type": t.get("type"),            # question / incident / problem / task
             "channel": t.get("via", {}).get("channel", "unknown"),
             "tags": t.get("tags", []),
+            "assignee_id": t.get("assignee_id"),
+            "group_id": t.get("group_id"),
         }
