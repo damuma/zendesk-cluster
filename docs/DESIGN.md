@@ -70,6 +70,26 @@ GPT-4o analiza los tickets que han llegado aquí con el contexto de los clusters
 - Crear un cluster nuevo si no hay uno apropiado
 - Buscar tickets de Jira (proyecto TEC) que puedan estar relacionados
 
+### Matching Cluster ↔ Jira
+
+Cuando se crea o actualiza un cluster, el sistema busca tickets en Jira
+(proyecto TEC, ya descargados en `data/jira_tickets.json`) que
+representen el mismo problema técnico. Se usa un matcher híbrido:
+
+1. **Prefiltrado por keywords** — tokens del resumen y anclas del cluster
+   comparados contra `summary + description + labels` de cada Jira.
+2. **Selección con GPT-4o** — de los 15 candidatos mejor puntuados, el
+   LLM elige los que realmente corresponden al problema y devuelve
+   confianza + razón.
+
+Los tickets de Jira no se clusterizan; son un índice contra el que los
+clusters de Zendesk se emparejan. Esto permite consolidar varios casos
+de usuario en un Jira existente.
+
+El script `fase0_jira.py` descarga los tickets de Jira (últimos 60 días,
+excluyendo `statusCategory=done`). `fase4_jira.py` re-matchea clusters
+existentes cuando hay nuevas Jiras.
+
 ---
 
 ## 4. Panel de visualización (Streamlit)
@@ -127,7 +147,7 @@ En la PoC, los tickets de Jira candidatos son solo lectura. En la siguiente fase
 | LLM local (Fase 1) | Ollama + Gemma 2 9B (Apple Silicon MPS) |
 | LLM remoto (Fase 3) | OpenAI GPT-4o |
 | API Zendesk | REST API v2 con token |
-| API Jira | REST API v3 (eldiario.atlassian.net) |
+| API Jira | REST API v3 `/search/jql` (paginación por nextPageToken) |
 | Panel | Streamlit |
 | Almacenamiento PoC | JSON files |
 | Almacenamiento prod | PostgreSQL 16 (GCloud) |
@@ -153,3 +173,5 @@ En la PoC, los tickets de Jira candidatos son solo lectura. En la siguiente fase
 - Notificaciones automáticas cuando aparece un cluster nuevo
 - Google Sheets (descartado en favor de Streamlit)
 - Acceso multi-usuario al panel (local únicamente en PoC)
+- Botón UI para adjuntar tickets Zendesk del cluster al ticket Jira candidato
+- Re-ejecución automática del matcher cuando llegan Jiras nuevas

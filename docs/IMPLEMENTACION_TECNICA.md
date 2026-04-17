@@ -19,16 +19,20 @@ zendesk-cluster/
 ├── data/                         # BBDD JSON local (PoC) — en .gitignore
 │   ├── conceptos.json            # Taxonomía generada en Fase 0
 │   ├── tickets.json              # Tickets procesados con metadata
-│   └── clusters.json             # Clusters activos
+│   ├── clusters.json             # Clusters activos
+│   └── jira_tickets.json         # Pool Jira local (primer registro es _meta)
 │
 ├── zendesk_client.py             # Wrapper Zendesk REST API v2
-├── jira_client.py                # Wrapper Jira REST API v3
+├── jira_client.py                # Wrapper Jira REST API v3 /search/jql
+├── jira_matcher.py               # Matcher híbrido keywords + GPT-4o
 ├── storage.py                    # Abstracción JSON → PostgreSQL
 │
 ├── fase0_explorar.py             # Descarga muestra + genera conceptos.json
+├── fase0_jira.py                 # Descarga Jira TEC 60d (full/incremental)
 ├── fase1_filtrar.py              # Clasifica: TECNICO vs DESCARTADO
 ├── fase2_preclasificar.py        # Asigna anclas por señales fuertes
-├── fase3_clusterizar.py          # Clustering fino + cross-ref Jira
+├── fase3_clusterizar.py          # Clustering fino + matching Jira local
+├── fase4_jira.py                 # Re-matching de clusters existentes
 ├── pipeline.py                   # Orquesta Fases 1-3 para batch
 │
 ├── app.py                        # Streamlit — punto de entrada
@@ -441,3 +445,40 @@ Cuando la PoC esté validada:
 4. Desplegar Streamlit en GCloud Run o como servicio en la VM `eldiario-logs`
 5. Programar `pipeline.py` con cron o n8n (webhook/schedule)
 6. Ollama puede correr en local o en VM (la VM tiene suficiente RAM para Gemma 9B cuantizado)
+
+---
+
+## 16. Scripts de Jira
+
+### `fase0_jira.py` — descarga
+
+```bash
+python fase0_jira.py            # modo incremental (default)
+python fase0_jira.py --full     # re-descarga completa 60d
+python fase0_jira.py --days 90  # cambia ventana
+```
+
+En modo FULL: `project = TEC AND statusCategory != Done AND updated >= -60d`.
+En modo INCREMENTAL: pide `updated >= fecha_fin - 10min` (incluye done para
+detectar cierres y borrarlos del pool).
+
+El primer registro de `data/jira_tickets.json` es `_meta` con el rango de
+fechas, último sync y total aproximado. `storage.get_jira_tickets()` lo
+filtra automáticamente.
+
+### `fase4_jira.py` — re-matching
+
+```bash
+python fase4_jira.py                    # todos los clusters
+python fase4_jira.py --cluster CLU-001  # uno solo
+python fase4_jira.py --solo-vacios      # solo clusters sin candidatos
+```
+
+Útil tras ejecutar `fase0_jira.py` para refrescar candidatos en clusters
+ya existentes sin re-procesar tickets de Zendesk.
+
+### Nota sobre la API de Jira
+
+El endpoint clásico `GET /rest/api/3/search` está deprecado (HTTP 410).
+Usamos `GET /rest/api/3/search/jql` con paginación por `nextPageToken`
+(no hay `total`, usar `POST /search/approximate-count`).
