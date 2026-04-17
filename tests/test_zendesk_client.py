@@ -220,6 +220,27 @@ def test_normalize_requester_email_null_when_cache_miss(tmp_path):
     assert n["requester_email"] is None
 
 
+def test_apply_users_cache_fills_requester_email(tmp_path):
+    from zendesk_users_cache import ZendeskUsersCache
+    cache = ZendeskUsersCache(tmp_path / "u.json")
+    cache.upsert([{"id": 42, "email": "a@x.com", "name": "A", "role": "end-user"}])
+    c = ZendeskClient(subdomain="acme", email="a@x.com", token="t", users_cache=cache)
+    tickets = [
+        {"zendesk_id": 1, "requester_id": 42, "requester_email": None},
+        {"zendesk_id": 2, "requester_id": 99, "requester_email": None},
+    ]
+    c.apply_users_cache(tickets)
+    assert tickets[0]["requester_email"] == "a@x.com"
+    assert tickets[1]["requester_email"] is None
+
+
+def test_apply_users_cache_noop_without_cache():
+    c = ZendeskClient(subdomain="acme", email="a@x.com", token="t")
+    tickets = [{"zendesk_id": 1, "requester_id": 42, "requester_email": None}]
+    c.apply_users_cache(tickets)
+    assert tickets[0]["requester_email"] is None
+
+
 def test_normalize_without_cache_sets_requester_email_none():
     c = ZendeskClient(subdomain="acme", email="a@x.com", token="t")
     n = c._normalize({"id": 1, "requester_id": 42, "via": {"channel": "email"}})

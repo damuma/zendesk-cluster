@@ -105,6 +105,19 @@ class ZendeskClient:
         resp.raise_for_status()
         return resp.json().get("tags", [])
 
+    def apply_users_cache(self, tickets: list[dict]) -> list[dict]:
+        """Fill `requester_email` on already-normalized tickets using self.users_cache.
+
+        No-op if users_cache is None. Mutates in place and returns the list.
+        """
+        if self.users_cache is None:
+            return tickets
+        for t in tickets:
+            rid = t.get("requester_id")
+            if rid is not None and t.get("requester_email") in (None, ""):
+                t["requester_email"] = self.users_cache.get_email(int(rid))
+        return tickets
+
     def fetch_users_by_ids(self, user_ids: list[int], batch_size: int = 100) -> list[dict]:
         """Fetch user records via /users/show_many.json?ids=... in batches.
 

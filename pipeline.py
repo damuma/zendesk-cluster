@@ -10,10 +10,13 @@ Uso:
 import argparse
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from zendesk_client import ZendeskClient
+from zendesk_users_cache import ZendeskUsersCache
+from fase0_zendesk_users import populate_cache_from_ids
 from storage import Storage
 from fase1_filtrar import Fase1Filtrador
 from fase2_preclasificar import Fase2Preclasificador
@@ -30,8 +33,16 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
         return
 
     print(f"📥 Descargando tickets de las últimas {horas}h...")
-    client = ZendeskClient()
+    users_cache = ZendeskUsersCache(Path(storage.data_dir) / "zendesk_users.json")
+    client = ZendeskClient(users_cache=users_cache)
     tickets_raw = client.get_tickets_since(since_hours=horas)
+
+    # Fase 0.5: poblar cache de usuarios para los requester_id de este batch.
+    requester_ids = [t.get("requester_id") for t in tickets_raw if t.get("requester_id")]
+    stats_users = populate_cache_from_ids(client, users_cache, requester_ids)
+    print(f"   Fase 0.5: users {stats_users}")
+    # Aplicar el cache a los tickets ya normalizados (inyecta requester_email).
+    client.apply_users_cache(tickets_raw)
 
     ya_procesados = {t["zendesk_id"] for t in storage.get_tickets()}
     tickets = [t for t in tickets_raw if t["zendesk_id"] not in ya_procesados]
@@ -69,6 +80,8 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
 
             f2 = preclasificador.preclasificar(ticket)
             ticket["fase2_anclas"] = f2["anclas"]
+            ticket["emails_mencionados"] = f2.get("emails_mencionados", [])
+            ticket["emails_asociados"] = f2.get("emails_asociados", [])
 
             if f2["cluster_candidato"]:
                 stats["ancla_directa"] += 1
@@ -93,6 +106,24 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
 
     clusters_despues = len(storage.get_clusters())
     stats["clusters_nuevos"] = clusters_despues - clusters_antes
+
+    # Fase 3.5: refine batch de clusters heterogéneos
+    if not dry_run:
+        try:
+            from fase35_refine import run_refine
+            from jira_matcher import JiraMatcher
+            from openai import OpenAI
+            import os
+            oai = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+            matcher = JiraMatcher(openai_client=oai, model=os.environ.get("OPENAI_MODEL", "gpt-4o"))
+            refine_stats = run_refine(
+                openai_client=oai, matcher=matcher, storage=storage,
+                min_tickets=int(os.environ.get("REFINE_MIN_TICKETS", 15)),
+                het_min=float(os.environ.get("REFINE_HETEROGENEITY_MIN", 0.5)),
+            )
+            print(f"📦 Fase 3.5 refine: {refine_stats}")
+        except Exception as e:
+            print(f"   ⚠️  Fase 3.5 skip (error: {e})")
 
     print(f"\n✅ Pipeline completado:")
     print(f"   Total tickets:     {stats['total']}")
