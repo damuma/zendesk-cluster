@@ -99,13 +99,19 @@ Responsabilidades:
 - Descarga de tickets por rango de fechas (paginación)
 - Descarga de tickets individuales
 - Rate limiting (Zendesk: 700 req/min en plan Team)
+- **Escritura de etiquetas** (`add_tags`) — disponible pero no invocada por el pipeline
 
 ```python
 # Interface pública
 class ZendeskClient:
-    def get_tickets(self, days_back: int = 30) -> list[dict]
+    DEFAULT_EXCLUDED_STATUSES = ("closed",)
+
+    def get_tickets(self, days_back: int = 30,
+                    exclude_statuses: tuple[str, ...] = DEFAULT_EXCLUDED_STATUSES) -> list[dict]
+    def get_tickets_since(self, since_hours: int = 24,
+                          exclude_statuses: tuple[str, ...] = DEFAULT_EXCLUDED_STATUSES) -> list[dict]
     def get_ticket(self, ticket_id: int) -> dict
-    def get_tickets_since(self, since_hours: int = 24) -> list[dict]
+    def add_tags(self, ticket_id: int, tags: list[str]) -> list[str]
 ```
 
 Campos que se extraen de cada ticket:
@@ -114,6 +120,34 @@ Campos que se extraen de cada ticket:
 - `status`, `priority`, `tags`
 - `requester_id` (anonimizado en storage)
 - `channel` (email, web, etc.)
+
+### Filtro de ingesta por estado
+
+`get_tickets` / `get_tickets_since` excluyen por defecto los tickets con
+`status="closed"` (archivados). El filtro se aplica en cliente tras normalizar,
+sobre la respuesta del incremental export. Para personalizar:
+
+```python
+client.get_tickets_since(since_hours=24, exclude_statuses=("closed", "solved"))
+```
+
+### Escritura de etiquetas (manual, no automática)
+
+`ZendeskClient.add_tags(ticket_id, tags)` hace `PUT /api/v2/tickets/{id}/tags.json`
+que **añade** tags sin reemplazar los existentes. El pipeline (`pipeline.py`) NO
+llama a este método — la decisión de etiquetar queda fuera del flujo automático.
+
+Utilidad puntual: [`scripts/tag_ticket.py`](../scripts/tag_ticket.py)
+
+```bash
+python scripts/tag_ticket.py 538248 error_acceso
+python scripts/tag_ticket.py 538248 error_acceso cluster_xyz
+```
+
+Punto de integración futuro: si se quiere etiquetar en automático al asignar
+cluster, el hook natural está en [`pipeline.py`](../pipeline.py) tras
+`storage.save_ticket(ticket)` — por ejemplo, aplicar el `tipo_problema` del
+cluster como tag en el ticket original.
 
 ---
 
@@ -302,6 +336,74 @@ CREATE TABLE clusters (
     tendencia VARCHAR(20)
 );
 ```
+
+---
+
+## 9.1 Fase 0.5 — Enriquecimiento de emails Zendesk
+
+`fase0_zendesk_users.py` puebla `data/zendesk_users.json` con los usuarios referenciados por `requester_id` en los tickets nuevos del batch.
+
+```python
+from fase0_zendesk_users import populate_cache_from_ids
+from zendesk_users_cache import ZendeskUsersCache
+
+cache = ZendeskUsersCache("data/zendesk_users.json")
+stats = populate_cache_from_ids(client, cache, requester_ids=[1,2,3])
+# → {"fetched": 3, "already_cached": 0}
+```
+
+Resuelve en lote (batching de 100 ids) vía `/users/show_many.json`. Usuarios borrados (no devueltos) se cachean con `email=null` para no re-consultarlos.
+
+Después, `ZendeskClient.apply_users_cache(tickets)` rellena el campo `requester_email` en cada ticket ya normalizado. `Fase 2` amplía el ticket con `emails_mencionados` (extraídos del body/subject con regex, filtrando dominios internos `@eldiario.es`) y `emails_asociados = set(emails_mencionados) ∪ {requester_email}`.
+
+## 9.2 Fase 3.5 — Refine batch de clusters
+
+`fase35_refine.py` se ejecuta al final del pipeline (post Fase 3). Identifica clusters gordos o heterogéneos y los divide en sub-clusters.
+
+```python
+from fase35_refine import run_refine
+
+stats = run_refine(
+    openai_client=oai, matcher=matcher, storage=storage,
+    model="gpt-5.4",        # OPENAI_MODEL_REFINE
+    fallback_model="gpt-4o",
+    min_tickets=15,         # REFINE_MIN_TICKETS
+    het_min=0.5,            # REFINE_HETEROGENEITY_MIN
+)
+# → {"clusters_refined": N, "children_created": M, "noop": K}
+```
+
+**Heurística de disparo** (`should_refine`):
+- `ticket_count ≥ REFINE_MIN_TICKETS` **o**
+- `heterogeneity_score ≥ REFINE_HETEROGENEITY_MIN` (% de tickets fuera del sistema modal)
+- El cluster ya refinado (`estado ∈ {"refined", "cerrado"}`) se salta.
+
+**Split LLM**: `split_cluster` llama a `OPENAI_MODEL_REFINE` con el prompt que pide subgrupos homogéneos por `subtipo`. Si el modelo falla, fallback automático a `gpt-4o` con warning en logs.
+
+**Aplicación**: si el LLM devuelve `≥2` subgrupos, `apply_split` crea hijos `CLU-NNN-A`, `CLU-NNN-B`, … con `parent_cluster_id`, `subtipo`, `refined_at`. El padre queda `estado: "refined"`, `ticket_ids: []`, `jira_candidatos: []`. `run_refine` re-matchea Jira para cada hijo con el matcher email-aware.
+
+CLI:
+```bash
+python -m fase35_refine                                 # usa env defaults
+python -m fase35_refine --min-tickets 20 --het-min 0.6  # override
+```
+
+## 9.3 JiraMatcher email-aware
+
+`jira_matcher.py` acepta `tickets_by_id` opcional en `match()`. Si el Jira menciona un email que aparece en `emails_asociados` de algún ticket del cluster, lo fuerza como candidato al LLM (aunque el prefilter keyword le asigne score 0). El LLM recibe `email_match` por candidato y una instrucción explícita de que es señal fuerte pero no suficiente (valida concepto también). Cuando confirma, la confianza se eleva a ≥0.95 y la razón incluye `"email de usuario (...) + concepto coincidente"`.
+
+Con `tickets_by_id` vacío o sin emails, el matcher se comporta exactamente como la versión anterior.
+
+## 9.4 Re-ingesta completa
+
+`scripts/reingest_all.py` orquesta una reconstrucción desde cero:
+
+```bash
+python -m scripts.reingest_all --days 30 --dry-run   # sólo imprime plan
+python -m scripts.reingest_all --days 30             # backup + truncate + pipeline
+```
+
+Hace backup de `data/{tickets,clusters}.json` con sufijo `.bak-reingest-<timestamp>`, trunca ambos, y delega en `run_pipeline` (que ya integra Fase 0.5 y 3.5).
 
 ---
 
