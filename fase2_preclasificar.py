@@ -1,4 +1,6 @@
 from storage import Storage
+from email_extract import extract_emails, INTERNAL_DOMAINS
+
 
 class Fase2Preclasificador:
     def __init__(self, conceptos: dict = None):
@@ -45,6 +47,14 @@ class Fase2Preclasificador:
                 partes.append(tipo_detectado)
             cluster_candidato = "_".join(partes).upper()
 
+        texto_para_emails = f"{ticket.get('subject', '')} {ticket.get('body_preview', '')}"
+        mencionados = extract_emails(texto_para_emails, exclude_domains=INTERNAL_DOMAINS)
+        req_email = ticket.get("requester_email")
+        asociados_set = set(mencionados)
+        if req_email:
+            asociados_set.add(req_email.lower())
+        emails_asociados = sorted(asociados_set)
+
         return {
             "anclas": {
                 "sistemas": sistemas_detectados,
@@ -54,4 +64,6 @@ class Fase2Preclasificador:
             "cluster_candidato": cluster_candidato,
             "score_ancla": score_ancla,
             "severidad_estimada": severidad,
+            "emails_mencionados": mencionados,
+            "emails_asociados": emails_asociados,
         }

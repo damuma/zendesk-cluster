@@ -17,6 +17,35 @@ CONCEPTOS = {
 def clasificador():
     return Fase2Preclasificador(conceptos=CONCEPTOS)
 
+def test_fase2_extrae_emails_mencionados_y_asociados(clasificador):
+    t = {
+        "subject": "no puedo acceder",
+        "body_preview": "Mi cuenta buyer@gmail.com. Confusión con otro: other@gmail.com.",
+        "requester_email": "buyer@gmail.com",
+    }
+    r = clasificador.preclasificar(t)
+    assert r["emails_mencionados"] == ["buyer@gmail.com", "other@gmail.com"]
+    assert r["emails_asociados"] == ["buyer@gmail.com", "other@gmail.com"]
+
+
+def test_fase2_emails_asociados_sin_requester_email(clasificador):
+    t = {"subject": "x", "body_preview": "contacto foo@bar.com"}
+    r = clasificador.preclasificar(t)
+    assert r["emails_mencionados"] == ["foo@bar.com"]
+    assert r["emails_asociados"] == ["foo@bar.com"]
+
+
+def test_fase2_filtra_dominios_internos(clasificador):
+    t = {
+        "subject": "x",
+        "body_preview": "Agente soporte@eldiario.es responde a cliente@gmail.com.",
+        "requester_email": None,
+    }
+    r = clasificador.preclasificar(t)
+    assert r["emails_mencionados"] == ["cliente@gmail.com"]
+    assert r["emails_asociados"] == ["cliente@gmail.com"]
+
+
 def test_detecta_sistema_stripe(clasificador):
     ticket = {"subject": "Cobro Stripe", "body_preview": "Me han cobrado dos veces via stripe con mi tarjeta"}
     result = clasificador.preclasificar(ticket)
