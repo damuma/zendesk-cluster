@@ -9,6 +9,35 @@ from jira_matcher import JiraMatcher
 load_dotenv()
 
 
+def _merge_jira_candidates(existing: list, nuevos: list[dict], cap: int = 5) -> list[dict]:
+    """Merge existing (possibly legacy strings) + new candidates.
+
+    - Dedup by jira_id; new candidate wins if both present (LLM just validated).
+    - Sort preferring email_match entries, then by confianza desc.
+    - Cap at `cap` to prevent unbounded growth across streaming assignments.
+    - Drop legacy string entries (pre-refactor data); they carry no confianza.
+    """
+    by_id: dict[str, dict] = {}
+    for e in existing:
+        if isinstance(e, str):
+            continue
+        jid = e.get("jira_id")
+        if jid:
+            by_id[jid] = e
+    for n in nuevos or []:
+        jid = n.get("jira_id")
+        if jid:
+            by_id[jid] = n
+
+    def _sort_key(c: dict):
+        has_em = 1 if c.get("email_match") else 0
+        conf = c.get("confianza")
+        conf_val = float(conf) if isinstance(conf, (int, float)) else 0.0
+        return (has_em, conf_val)
+
+    return sorted(by_id.values(), key=_sort_key, reverse=True)[:cap]
+
+
 class Fase3Clusterizador:
     def __init__(self, storage=None, matcher=None, openai_client=None):
         self.openai = openai_client or OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -128,15 +157,11 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
                 cluster["updated_at"] = now
                 if ticket["zendesk_id"] not in cluster.get("ticket_ids", []):
                     cluster.setdefault("ticket_ids", []).append(ticket["zendesk_id"])
-                existing = cluster.get("jira_candidatos", [])
-                by_id: dict[str, dict | str] = {}
-                for e in existing:
-                    jid = e if isinstance(e, str) else e.get("jira_id")
-                    if jid:
-                        by_id[jid] = e
-                for n in jira_candidatos:
-                    by_id[n["jira_id"]] = n
-                cluster["jira_candidatos"] = list(by_id.values())
+                cluster["jira_candidatos"] = _merge_jira_candidates(
+                    existing=cluster.get("jira_candidatos", []),
+                    nuevos=jira_candidatos,
+                    cap=5,
+                )
                 self.storage.save_cluster(cluster)
             else:
                 accion = "CREAR_NUEVO"

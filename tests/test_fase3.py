@@ -1,7 +1,32 @@
 import pytest
 from unittest.mock import MagicMock
-from fase3_clusterizar import Fase3Clusterizador
+from fase3_clusterizar import Fase3Clusterizador, _merge_jira_candidates
 from storage import Storage
+
+
+def test_merge_jira_candidates_caps_at_five_and_prefers_email_match():
+    existing = [
+        {"jira_id": "A", "confianza": 0.9},
+        {"jira_id": "B", "confianza": 0.85},
+        {"jira_id": "C", "confianza": 0.8},
+        {"jira_id": "D", "confianza": 0.75},
+        "LEGACY-1",
+    ]
+    nuevos = [
+        {"jira_id": "E", "confianza": 0.7},
+        {"jira_id": "F", "confianza": 0.6, "email_match": [{"email": "x@y.com", "zendesk_id": 1}]},
+        {"jira_id": "A", "confianza": 0.95},  # override del existente
+    ]
+    merged = _merge_jira_candidates(existing, nuevos, cap=5)
+    ids = [m["jira_id"] for m in merged]
+    assert ids[0] == "F"  # único con email_match
+    assert ids[1:5] == ["A", "B", "C", "D"]
+    assert len(merged) == 5
+
+
+def test_merge_jira_candidates_drops_legacy_strings():
+    merged = _merge_jira_candidates(["TEC-1", "TEC-2"], [{"jira_id": "TEC-3", "confianza": 0.9}])
+    assert [m["jira_id"] for m in merged] == ["TEC-3"]
 
 
 def _make_openai_response(data: dict):
