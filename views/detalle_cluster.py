@@ -548,8 +548,18 @@ def _render_jira_detail(item, jira_pool_by_id: dict | None = None, hide_razon: b
 
     em = item.get("email_match") or []
     if em:
-        emails = ", ".join(e.get("email", "") for e in em if e.get("email"))
-        st.success(f"📧 **Match por email de usuario:** `{emails}`")
+        parts: list[str] = []
+        for e in em:
+            email = e.get("email", "")
+            zid = e.get("zendesk_id")
+            if not email:
+                continue
+            if zid is not None:
+                parts.append(f"`{email}` (ticket #{zid})")
+            else:
+                parts.append(f"`{email}`")
+        if parts:
+            st.success("📧 **Match por email de usuario:** " + " · ".join(parts))
 
     pool_entry = (jira_pool_by_id or {}).get(jid) if jira_pool_by_id else None
     description = item.get("description_text") or (pool_entry.get("description_text") if pool_entry else "")

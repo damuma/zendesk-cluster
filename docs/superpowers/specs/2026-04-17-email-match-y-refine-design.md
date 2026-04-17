@@ -107,12 +107,12 @@ Campos añadidos:
   "confianza": 0.97,
   "razon": "email de usuario (mabro96@gmail.com) + concepto coincidente — ...",
   "email_match": [                            // NUEVO — trazabilidad
-    {"zendesk_id": 533284, "email": "mabro96@gmail.com"}
+    {"email": "mabro96@gmail.com", "zendesk_id": 533284}
   ]
 }
 ```
 
-`email_match` es `[]` o ausente cuando no aplica. Cuando aplica y el LLM confirma, `confianza ≥ 0.95`.
+`email_match` es `[]` o ausente cuando no aplica. Cuando aplica y el LLM confirma, `confianza ≥ 0.95`. Un mismo email puede aparecer varias veces si lo comparten varios tickets del cluster (una entrada por `(email, zendesk_id)`).
 
 ### 4.4. Nuevo fichero: `data/zendesk_users.json`
 

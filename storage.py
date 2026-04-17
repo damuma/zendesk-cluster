@@ -23,8 +23,14 @@ class Storage:
             return json.load(f)
 
     def _write(self, filename: str, data: list | dict) -> None:
-        with open(self.data_dir / filename, "w") as f:
+        """Atomic write: render to a sibling `.tmp` then rename. Prevents
+        corruption if the process dies mid-write (critical for Fase 3.5 which
+        rewrites the full clusters.json in one save_clusters call)."""
+        path = self.data_dir / filename
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+        tmp.replace(path)
 
     # ── Tickets ───────────────────────────────────────────────
     def get_tickets(self, filters: dict = None) -> list[dict]:

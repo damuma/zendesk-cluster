@@ -28,7 +28,7 @@ def test_extract_jira_emails_filters_internal():
     assert m._extract_jira_emails(j) == {"client@gmail.com"}
 
 
-def test_cluster_emails_union_of_ticket_emails():
+def test_cluster_email_sources_maps_to_zendesk_ids():
     m = JiraMatcher(api_key=None)
     cluster = {"ticket_ids": [1, 2, 3]}
     tickets_by_id = {
@@ -36,7 +36,10 @@ def test_cluster_emails_union_of_ticket_emails():
         2: {"emails_asociados": ["b@x.com", "a@x.com"]},
         3: {"emails_asociados": []},
     }
-    assert m._cluster_emails(cluster, tickets_by_id) == {"a@x.com", "b@x.com"}
+    sources = m._cluster_email_sources(cluster, tickets_by_id)
+    assert set(sources.keys()) == {"a@x.com", "b@x.com"}
+    assert sources["a@x.com"] == [1, 2]
+    assert sources["b@x.com"] == [2]
 
 
 def test_match_includes_email_candidate_even_if_keyword_score_zero():
@@ -61,7 +64,7 @@ def test_match_includes_email_candidate_even_if_keyword_score_zero():
     assert any(r["jira_id"] == "TEC-3091" for r in result)
     boosted = next(r for r in result if r["jira_id"] == "TEC-3091")
     assert boosted["confianza"] >= 0.95
-    assert boosted["email_match"] == [{"email": "mabro96@gmail.com"}]
+    assert boosted["email_match"] == [{"email": "mabro96@gmail.com", "zendesk_id": 1}]
     assert "email de usuario" in boosted["razon"]
 
 
@@ -135,5 +138,5 @@ def test_match_sin_llm_marca_email_match_con_confianza_0_9():
     result = m.match(cluster, jira_pool, tickets_by_id=tickets_by_id)
     assert len(result) == 1
     assert result[0]["confianza"] == 0.9
-    assert result[0]["email_match"] == [{"email": "user@x.com"}]
+    assert result[0]["email_match"] == [{"email": "user@x.com", "zendesk_id": 1}]
     assert "email match" in result[0]["razon"]

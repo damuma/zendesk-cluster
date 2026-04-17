@@ -28,8 +28,15 @@ def test_heterogeneity_score_mezcla():
 
 
 def test_heterogeneity_handles_empty_anclas():
+    # Todos sin ancla → todos son modales (mismo bucket "__sin_sistema__") → 0.
     tickets = [{"anclas": {}}, {"anclas": {"sistemas": []}}]
     assert heterogeneity_score(tickets) == 0.0
+
+
+def test_heterogeneity_mixes_classified_and_unclassified():
+    # 7 con crm, 3 sin ancla → modal=7, 1 - 7/10 = 0.3 (los sin ancla cuentan como no-modal).
+    tickets = [{"anclas": {"sistemas": ["crm"]}}] * 7 + [{"anclas": {}}] * 3
+    assert heterogeneity_score(tickets) == 0.3
 
 
 def test_heterogeneity_empty_tickets():
@@ -59,6 +66,29 @@ def test_should_not_refine_homogeneous_small():
     cluster = {"ticket_count": 5, "estado": "abierto"}
     tickets = [{"anclas": {"sistemas": ["crm"]}}] * 5
     assert should_refine(cluster, tickets=tickets, min_tickets=15, het_min=0.5) is False
+
+
+def test_should_not_refine_if_recently_refined_no_op():
+    """Cluster que hizo refine no-op (1 subgrupo) NO debe re-evaluarse en <24h."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    cluster = {
+        "ticket_count": 20,  # sigue grande
+        "estado": "abierto",
+        "refined_at": (now - timedelta(hours=1)).isoformat(),
+    }
+    assert should_refine(cluster, tickets=[], min_tickets=15, het_min=0.5, now=now) is False
+
+
+def test_should_refine_after_cooldown_expires():
+    from datetime import datetime, timezone, timedelta
+    now = datetime(2026, 4, 17, 12, 0, tzinfo=timezone.utc)
+    cluster = {
+        "ticket_count": 20,
+        "estado": "abierto",
+        "refined_at": (now - timedelta(hours=30)).isoformat(),
+    }
+    assert should_refine(cluster, tickets=[], min_tickets=15, het_min=0.5, now=now) is True
 
 
 # ── split_cluster ──────────────────────────────────────────

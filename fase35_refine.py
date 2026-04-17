@@ -19,20 +19,35 @@ _log = logging.getLogger(__name__)
 
 
 # ── heuristics ─────────────────────────────────────────────
+_UNCLASSIFIED = "__sin_sistema__"
+
+
 def heterogeneity_score(tickets: list[dict]) -> float:
+    """Return 1 - (modal_count / total_tickets).
+
+    Tickets sin ancla de sistema cuentan como "__sin_sistema__" para que
+    NO pasen por invisibles: una mezcla de [crm, crm, sin_ancla] debe
+    producir heterogeneidad > 0, no 0.
+    """
     if not tickets:
         return 0.0
     sistemas: list[str] = []
     for t in tickets:
         anclas = t.get("anclas") or {}
         sist = anclas.get("sistemas") or []
-        if sist:
-            sistemas.append(sist[0])
-    if not sistemas:
-        return 0.0
+        sistemas.append(sist[0] if sist else _UNCLASSIFIED)
     counts = Counter(sistemas)
     modal = counts.most_common(1)[0][1]
     return round(1.0 - (modal / len(tickets)), 4)
+
+
+def _parse_iso(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
 
 
 def should_refine(
@@ -40,9 +55,18 @@ def should_refine(
     tickets: list[dict],
     min_tickets: int = 15,
     het_min: float = 0.5,
+    cooldown_hours: int = 24,
+    now: datetime | None = None,
 ) -> bool:
     if cluster.get("estado") not in (None, "abierto"):
         return False
+    # Cooldown: si ya fue refinado (aunque sea no-op) recientemente, no repetir.
+    refined_at = _parse_iso(cluster.get("refined_at"))
+    if refined_at is not None:
+        now = now or datetime.now(timezone.utc)
+        elapsed = (now - refined_at).total_seconds()
+        if elapsed < cooldown_hours * 3600:
+            return False
     if cluster.get("ticket_count", 0) >= min_tickets:
         return True
     if heterogeneity_score(tickets) >= het_min:
@@ -176,7 +200,14 @@ def run_refine(
 
     new_clusters: list[dict] = []
     for cluster in clusters:
-        tickets_en_cluster = [tickets_by_id[t] for t in cluster.get("ticket_ids", []) if t in tickets_by_id]
+        all_ids = cluster.get("ticket_ids", [])
+        tickets_en_cluster = [tickets_by_id[t] for t in all_ids if t in tickets_by_id]
+        orphans = [t for t in all_ids if t not in tickets_by_id]
+        if orphans:
+            _log.warning(
+                "refine: cluster %s tiene %d ticket_ids huérfanos (no en tickets.json): %s",
+                cluster.get("cluster_id"), len(orphans), orphans[:5],
+            )
         if not should_refine(cluster, tickets_en_cluster, min_tickets, het_min):
             new_clusters.append(cluster)
             continue

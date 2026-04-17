@@ -97,13 +97,22 @@ class JiraMatcher:
         txt = f"{jira.get('summary', '')} {jira.get('description_text', '')}"
         return set(extract_emails(txt, exclude_domains=INTERNAL_DOMAINS))
 
-    def _cluster_emails(self, cluster: dict, tickets_by_id: dict[int, dict]) -> set[str]:
-        out: set[str] = set()
+    def _cluster_email_sources(
+        self, cluster: dict, tickets_by_id: dict[int, dict]
+    ) -> dict[str, list[int]]:
+        """Map each cluster-associated email to the list of zendesk_ids that
+        contributed it. Used to preserve trazabilidad in email_match."""
+        out: dict[str, list[int]] = {}
         for tid in cluster.get("ticket_ids") or []:
             t = tickets_by_id.get(tid) or {}
             for e in t.get("emails_asociados") or []:
-                if e:
-                    out.add(e.lower())
+                if not e:
+                    continue
+                key = e.lower()
+                if key not in out:
+                    out[key] = []
+                if tid not in out[key]:
+                    out[key].append(tid)
         return out
 
     def _prefilter_keywords(self, signals: dict, pool: Iterable[dict], limit: int = 15) -> list[dict]:
@@ -176,7 +185,11 @@ Responde SOLO con JSON:
             confianza = m.get("confianza")
             razon = m.get("razon", "")
             if em:
-                if confianza is not None:
+                # Email confirmado por el LLM (devolvió el candidato): boost
+                # determinístico a >=0.95, aunque el LLM no haya emitido valor.
+                if confianza is None:
+                    confianza = 0.95
+                else:
                     confianza = max(float(confianza), 0.95)
                 emails_txt = ", ".join(sorted({e["email"] for e in em}))
                 razon = f"email de usuario ({emails_txt}) + concepto coincidente — {razon}"
@@ -203,13 +216,18 @@ Responde SOLO con JSON:
         if not jira_pool:
             return []
         signals = self._cluster_signals(cluster)
-        cluster_emails = self._cluster_emails(cluster, tickets_by_id or {})
+        email_sources = self._cluster_email_sources(cluster, tickets_by_id or {})
+        cluster_emails = set(email_sources.keys())
         email_match_by_id: dict[str, list[dict]] = {}
         if cluster_emails:
             for j in jira_pool:
                 inter = self._extract_jira_emails(j) & cluster_emails
                 if inter:
-                    email_match_by_id[j["jira_id"]] = [{"email": e} for e in sorted(inter)]
+                    entries: list[dict] = []
+                    for e in sorted(inter):
+                        for zid in email_sources.get(e, []):
+                            entries.append({"email": e, "zendesk_id": zid})
+                    email_match_by_id[j["jira_id"]] = entries
 
         if not signals["keywords"] and not email_match_by_id:
             return []
