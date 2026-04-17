@@ -48,11 +48,11 @@
   <line x1="430" y1="230" x2="430" y2="240" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
   <line x1="430" y1="295" x2="430" y2="305" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Descartados branch -->
-  <line x1="600" y1="202" x2="660" y2="202" stroke="#e53935" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrowRed)"/>
-  <rect x="660" y="182" width="110" height="40" rx="6" fill="#ffebee" stroke="#e53935" stroke-width="1"/>
-  <text x="715" y="199" text-anchor="middle" font-size="10" fill="#c62828">Descartados</text>
-  <text x="715" y="214" text-anchor="middle" font-size="10" fill="#c62828">(bajas voluntarias...)</text>
+  <!-- Descartados branch (moved down to avoid jira_tickets.json overlap) -->
+  <line x1="600" y1="215" x2="640" y2="238" stroke="#e53935" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrowRed)"/>
+  <rect x="640" y="225" width="130" height="34" rx="6" fill="#ffebee" stroke="#e53935" stroke-width="1"/>
+  <text x="705" y="240" text-anchor="middle" font-size="10" fill="#c62828">Descartados</text>
+  <text x="705" y="253" text-anchor="middle" font-size="9" fill="#c62828">(bajas voluntarias...)</text>
 
   <!-- Arrow Funnel → Storage -->
   <line x1="430" y1="360" x2="430" y2="400" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
@@ -88,10 +88,12 @@
   <text x="780" y="182" text-anchor="middle" font-size="11" font-weight="bold" fill="#f57f17">jira_tickets.json (local)</text>
   <text x="780" y="198" text-anchor="middle" font-size="9" fill="#555">_meta + pool 60d · sin done</text>
 
-  <!-- Arrow jira_tickets.json → Fase 3 (matcher híbrido) -->
-  <line x1="690" y1="187" x2="620" y2="332" stroke="#1565c0" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowBlue)"/>
-  <text x="560" y="230" font-size="10" fill="#1565c0">matcher híbrido</text>
-  <text x="560" y="243" font-size="9" fill="#1565c0">(keywords + GPT-4o)</text>
+  <!-- Arrow jira_tickets.json → Fase 3 (matcher híbrido)
+       Route outside EMBUDO: go right-to-down from JSON box to Fase 3 right edge. -->
+  <line x1="690" y1="212" x2="690" y2="332" stroke="#1565c0" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <line x1="690" y1="332" x2="620" y2="332" stroke="#1565c0" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrowBlue)"/>
+  <text x="635" y="225" font-size="10" fill="#1565c0" transform="rotate(90,635,225)">matcher híbrido</text>
+  <text x="648" y="225" font-size="9"  fill="#1565c0" transform="rotate(90,648,225)">(keywords + GPT-4o)</text>
 
   <!-- Future n8n label -->
   <rect x="690" y="260" width="180" height="55" rx="10" fill="#fce4ec" stroke="#c2185b" stroke-width="1.5" stroke-dasharray="5,3"/>
