@@ -129,6 +129,11 @@ div[data-testid="stMarkdownContainer"] > div,
 }
 .zt-conf-ok   { color: #4caf50 !important; }
 .zt-conf-warn { color: #ff9800 !important; }
+
+/* Jira chip variant (Atlassian blue) */
+.zt-jira-chip {
+    color: #0052cc !important;
+}
 </style>
 """
 
@@ -141,6 +146,38 @@ def _esc(text: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
         .replace("'", "&#39;")
+    )
+
+
+def _jira_chip_html(j: dict | str, jira_host: str) -> str:
+    """Renders a Jira candidate as a chip with hover tooltip (summary + razon + link)."""
+    if isinstance(j, str):
+        jid = j
+        url = f"https://{jira_host}/browse/{jid}"
+        return (
+            f'<span class="zt-ticket zt-jira">'
+            f'  <a class="zt-chip zt-jira-chip" href="{url}" target="_blank">🔷 {_esc(jid)}</a>'
+            f'</span>'
+        )
+    jid = j.get("jira_id", "?")
+    url = j.get("url") or f"https://{jira_host}/browse/{jid}"
+    summary = _esc(j.get("summary") or "Sin asunto")
+    status = _esc(j.get("status") or "—")
+    conf = j.get("confianza")
+    conf_str = f"{int(conf * 100)}%" if isinstance(conf, (int, float)) else "—"
+    razon_html = f'<div class="zt-body">{_esc(j.get("razon"))}</div>' if j.get("razon") else ""
+    return (
+        f'<span class="zt-ticket zt-jira">'
+        f'  <a class="zt-chip zt-jira-chip" href="{_esc(url)}" target="_blank">🔷 {_esc(jid)}</a>'
+        f'  <span class="zt-tip">'
+        f'    <div class="zt-subject">{summary}</div>'
+        f'    {razon_html}'
+        f'    <div class="zt-meta">'
+        f'      📌 <span class="zt-conf-ok">{status}</span>&nbsp;·&nbsp;🎯 Confianza: {conf_str}'
+        f'    </div>'
+        f'    <a class="zt-open" href="{_esc(url)}" target="_blank">🔗 Abrir en Jira →</a>'
+        f'  </span>'
+        f'</span>'
     )
 
 
@@ -274,20 +311,25 @@ def render():
     st.markdown("---")
 
     # ── Lista de clusters ──────────────────────────────────────
+    jira_host = os.environ.get("JIRA_HOST", "eldiario.atlassian.net")
     for cluster in filtered:
         sev  = cluster.get("severidad", "MEDIUM")
         icon = SEVERIDAD_COLOR.get(sev, "⚪")
         tend = TENDENCIA_ICON.get(cluster.get("tendencia", "estable"), "→")
         _jira_items = cluster.get("jira_candidatos", []) or []
-        _jira_ids = [j if isinstance(j, str) else j.get("jira_id", "") for j in _jira_items]
-        jira_list = ", ".join(i for i in _jira_ids if i) or "—"
+        _jira_count = len(_jira_items)
+        jira_badge = f" · 🔷 {_jira_count}" if _jira_count else ""
 
-        with st.expander(f"{icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}"):
+        with st.expander(f"{icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}{jira_badge}"):
             col1, col2 = st.columns([2, 1])
             with col1:
                 st.markdown(f"**Resumen:** {cluster.get('resumen', '_Sin resumen_')}")
                 st.markdown(f"**Sistema:** `{cluster.get('sistema', '—')}` · **Tipo:** `{cluster.get('tipo_problema', '—')}`")
-                st.markdown(f"**Jira candidatos:** {jira_list}")
+                if _jira_items:
+                    jira_chips = " ".join(_jira_chip_html(j, jira_host) for j in _jira_items)
+                    st.markdown(f"**Jira candidatos:** {jira_chips}", unsafe_allow_html=True)
+                else:
+                    st.markdown("**Jira candidatos:** —")
             with col2:
                 st.metric("Tickets", cluster.get("ticket_count", 0))
                 st.caption(f"Creado: {cluster.get('created_at', '')[:10]}")
