@@ -68,3 +68,30 @@ class Storage:
 
     def save_conceptos(self, conceptos: dict) -> None:
         self._write("conceptos.json", conceptos)
+
+    # ── Jira tickets ──────────────────────────────────────────
+    def _raw_jira(self) -> list:
+        data = self._read("jira_tickets.json")
+        return data if isinstance(data, list) else []
+
+    def get_jira_tickets(self) -> list[dict]:
+        return [t for t in self._raw_jira() if not t.get("_meta")]
+
+    def get_jira_metadata(self) -> dict:
+        for entry in self._raw_jira():
+            if entry.get("_meta"):
+                return entry
+        return {}
+
+    def save_jira_tickets(self, tickets: list[dict], meta: dict) -> None:
+        meta = {**meta, "_meta": True}
+        self._write("jira_tickets.json", [meta, *tickets])
+
+    def upsert_jira_tickets(self, nuevos: list[dict], done_ids: set[str], meta: dict) -> None:
+        existentes = {t["jira_id"]: t for t in self.get_jira_tickets()}
+        for t in nuevos:
+            existentes[t["jira_id"]] = t
+        for jid in done_ids:
+            existentes.pop(jid, None)
+        ordered = sorted(existentes.values(), key=lambda t: t.get("updated") or "", reverse=True)
+        self.save_jira_tickets(ordered, meta)
