@@ -178,7 +178,7 @@ Cluster ya refinado (`estado: refined` o `refined_at` reciente < 24h) se salta.
 
 ### 7.2. Prompt de split
 
-Se usa un **modelo de razonamiento** (por config `OPENAI_MODEL_REFINE`, default `o3-mini`; fallback `gpt-4o` si no disponible).
+Se usa un **modelo de razonamiento de OpenAI** (por config `OPENAI_MODEL_REFINE`, default `gpt-5.4`; fallback `gpt-4o` si no disponible).
 
 Input al LLM: por cada ticket del cluster `{zendesk_id, subject, body_preview[:500], anclas}`. Para clusters muy grandes (>40 tickets), se hace en 2 pasadas: primera agrupa 40, segunda integra el resto.
 
@@ -355,7 +355,7 @@ Después del merge, antes de la re-ingesta en prod:
 Variables de entorno nuevas (añadir a `.env.example`):
 
 ```
-OPENAI_MODEL_REFINE=o3-mini       # modelo para Fase 3.5 batch
+OPENAI_MODEL_REFINE=gpt-5.4       # modelo de razonamiento para Fase 3.5 batch
 REFINE_MIN_TICKETS=15             # umbral de tamaño para disparar refine
 REFINE_HETEROGENEITY_MIN=0.5      # umbral de heterogeneidad
 REFINE_MAX_TICKETS_PER_BATCH=40   # split en 2 pasadas si excede
@@ -374,7 +374,7 @@ REFINE_MAX_TICKETS_PER_BATCH=40   # split en 2 pasadas si excede
 | Riesgo | Impacto | Mitigación |
 |---|---|---|
 | La cuenta API Zendesk no tiene permiso para listar usuarios | Alto — bloquea Fase 0.5 | Probar en fase 0.5 con un sample; si falla, caer a lookup 1-a-1 con `?include=users` en endpoints de tickets individuales |
-| `o3-mini` no disponible en la cuenta OpenAI | Medio | Fallback automático a `gpt-4o` con warning en logs |
+| `gpt-5.4` no disponible en la cuenta OpenAI | Medio | Fallback automático a `gpt-4o` con warning en logs |
 | Refine parte mal un cluster bueno (falso positivo de heterogeneidad) | Medio | Umbrales conservadores en v1; visibilidad en UI para revertir manualmente (editar `clusters.json` a mano es aceptable en v1) |
 | Email en descripción Jira que es un email de agente de soporte, no de cliente | Bajo | Filtro: excluir emails que coincidan con dominios internos (`@eldiario.es`) — aplicar en extracción Jira |
 | Re-ingesta pierde datos si falla a mitad | Alto | Backup explícito antes de truncar; operación idempotente desde estado inicial |
