@@ -28,7 +28,7 @@ class Fase3Clusterizador:
         return f"CLU-{(max(nums) + 1 if nums else 1):03d}"
 
     def clusterizar(self, ticket: dict) -> dict:
-        clusters = self.storage.get_clusters(estado="abierto")
+        clusters = [c for c in self.storage.get_clusters(estado="abierto") if c.get("estado") != "refined"]
         conceptos = self.storage.get_conceptos()
         if not isinstance(conceptos, dict):
             conceptos = {}
@@ -39,6 +39,8 @@ class Fase3Clusterizador:
                 "nombre": c["nombre"],
                 "sistema": c.get("sistema"),
                 "tipo_problema": c.get("tipo_problema"),
+                "subtipo": c.get("subtipo"),
+                "parent_cluster_id": c.get("parent_cluster_id"),
                 "resumen": c.get("resumen", ""),
                 "ticket_count": c.get("ticket_count", 0),
             }
@@ -101,8 +103,16 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
                     "tipo_problema": (data.get("cluster_nuevo") or {}).get("tipo_problema") or "",
                     "resumen": (data.get("cluster_nuevo") or {}).get("resumen") or ticket.get("subject", ""),
                     "anclas": ticket.get("fase2_anclas") or {},
+                    "ticket_ids": [ticket.get("zendesk_id")] if ticket.get("zendesk_id") else [],
                 }
-                jira_candidatos = self.matcher.match(preview, jira_pool, top_k=5)
+                # Inyectamos el propio ticket en el lookup para que sus
+                # emails_asociados estén disponibles al matcher.
+                tickets_by_id = self.storage.get_tickets_by_id()
+                if ticket.get("zendesk_id") is not None:
+                    tickets_by_id[ticket["zendesk_id"]] = ticket
+                jira_candidatos = self.matcher.match(
+                    preview, jira_pool, top_k=5, tickets_by_id=tickets_by_id
+                )
         except Exception:
             jira_candidatos = []
 
