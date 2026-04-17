@@ -23,11 +23,15 @@ def _is_empty(jc) -> bool:
 def run(storage: Storage, matcher: JiraMatcher, only_empty: bool, cluster_id: str | None) -> dict:
     jira_pool = storage.get_jira_tickets()
     clusters = storage.get_clusters()
+    tickets_by_id = storage.get_tickets_by_id()
 
     if cluster_id:
         clusters = [c for c in clusters if c.get("cluster_id") == cluster_id]
     if only_empty:
         clusters = [c for c in clusters if _is_empty(c.get("jira_candidatos"))]
+
+    # Padres refinados no reciben match (sus hijos sí).
+    clusters = [c for c in clusters if c.get("estado") != "refined"]
 
     if not jira_pool:
         print("  (pool Jira vacío — ejecuta primero `python fase0_jira.py`)")
@@ -42,9 +46,10 @@ def run(storage: Storage, matcher: JiraMatcher, only_empty: bool, cluster_id: st
             "tipo_problema": c.get("tipo_problema", ""),
             "resumen": c.get("resumen", ""),
             "anclas": {},
+            "ticket_ids": c.get("ticket_ids", []),
         }
         try:
-            candidatos = matcher.match(preview, jira_pool, top_k=5)
+            candidatos = matcher.match(preview, jira_pool, top_k=5, tickets_by_id=tickets_by_id)
         except Exception as e:
             print(f"  ⚠️  {c['cluster_id']}: {e}")
             continue

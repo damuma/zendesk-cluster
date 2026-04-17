@@ -77,6 +77,51 @@ def test_run_single_cluster_id(env):
     assert stats["procesados"] == 1
 
 
+def test_run_passes_tickets_by_id_and_ticket_ids_to_matcher(env):
+    storage, matcher = env
+    # cluster con ticket_ids
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    storage.save_cluster({
+        "cluster_id": "CLU-001", "nombre": "x", "estado": "abierto",
+        "created_at": now, "updated_at": now, "resumen": "x",
+        "sistema": "s", "tipo_problema": "t", "ticket_ids": [10, 20],
+        "jira_candidatos": [],
+    })
+    storage.save_ticket({"zendesk_id": 10, "emails_asociados": ["a@x.com"]})
+    storage.save_ticket({"zendesk_id": 20, "emails_asociados": ["b@x.com"]})
+    _seed_pool(storage)
+    matcher.match.return_value = []
+    run(storage=storage, matcher=matcher, only_empty=False, cluster_id=None)
+    call = matcher.match.call_args
+    preview = call.args[0]
+    assert preview["ticket_ids"] == [10, 20]
+    tbi = call.kwargs["tickets_by_id"]
+    assert tbi[10]["emails_asociados"] == ["a@x.com"]
+    assert tbi[20]["emails_asociados"] == ["b@x.com"]
+
+
+def test_run_skips_refined_parents(env):
+    storage, matcher = env
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    storage.save_cluster({
+        "cluster_id": "CLU-001", "nombre": "padre", "estado": "refined",
+        "created_at": now, "updated_at": now, "resumen": "", "sistema": "",
+        "tipo_problema": "", "ticket_ids": [], "jira_candidatos": [],
+    })
+    storage.save_cluster({
+        "cluster_id": "CLU-001-A", "nombre": "hijo", "estado": "abierto",
+        "parent_cluster_id": "CLU-001", "subtipo": "x",
+        "created_at": now, "updated_at": now, "resumen": "r", "sistema": "s",
+        "tipo_problema": "t", "ticket_ids": [], "jira_candidatos": [],
+    })
+    _seed_pool(storage)
+    matcher.match.return_value = []
+    stats = run(storage=storage, matcher=matcher, only_empty=False, cluster_id=None)
+    assert stats["procesados"] == 1  # sólo el hijo
+
+
 def test_run_empty_pool_is_noop(env):
     storage, matcher = env
     _seed_cluster(storage, "CLU-001", [])
