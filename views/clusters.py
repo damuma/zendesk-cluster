@@ -278,7 +278,9 @@ def render():
         sev  = cluster.get("severidad", "MEDIUM")
         icon = SEVERIDAD_COLOR.get(sev, "⚪")
         tend = TENDENCIA_ICON.get(cluster.get("tendencia", "estable"), "→")
-        jira_list = ", ".join(cluster.get("jira_candidatos", [])) or "—"
+        _jira_items = cluster.get("jira_candidatos", []) or []
+        _jira_ids = [j if isinstance(j, str) else j.get("jira_id", "") for j in _jira_items]
+        jira_list = ", ".join(i for i in _jira_ids if i) or "—"
 
         with st.expander(f"{icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}"):
             col1, col2 = st.columns([2, 1])

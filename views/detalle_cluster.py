@@ -36,12 +36,24 @@ def render(cluster_id: str):
     st.markdown(f"**Estado:** `{cluster.get('estado', '—')}`")
     st.markdown(f"**Creado:** {cluster.get('created_at', '')[:10]}  ·  **Actualizado:** {cluster.get('updated_at', '')[:10]}")
 
-    jira_ids = cluster.get("jira_candidatos", [])
-    if jira_ids:
+    jira_items = cluster.get("jira_candidatos", []) or []
+    if jira_items:
         st.subheader("🔗 Jira candidatos")
         jira_host = __import__("os").environ.get("JIRA_HOST", "eldiario.atlassian.net")
-        for jid in jira_ids:
-            st.markdown(f"- [{jid}](https://{jira_host}/browse/{jid})")
+        for item in jira_items:
+            if isinstance(item, str):
+                st.markdown(f"- [{item}](https://{jira_host}/browse/{item})")
+                continue
+            jid = item.get("jira_id", "")
+            url = item.get("url") or f"https://{jira_host}/browse/{jid}"
+            status = item.get("status") or "—"
+            conf = item.get("confianza")
+            conf_str = f" · **{int(conf * 100)}%**" if isinstance(conf, (int, float)) else ""
+            razon = item.get("razon") or ""
+            summary = item.get("summary") or ""
+            st.markdown(f"- [{jid}]({url}) · `{status}`{conf_str} — {summary}")
+            if razon:
+                st.caption(f"  ↳ {razon}")
 
     st.subheader("🎫 Tickets en este cluster")
     tickets = storage.get_cluster_tickets(cluster_id)
