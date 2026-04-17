@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from fase3_clusterizar import Fase3Clusterizador
 from storage import Storage
 
@@ -14,15 +14,15 @@ def _make_openai_response(data: dict):
 @pytest.fixture
 def tmp_clusterizador(tmp_path):
     storage = Storage(backend="json", data_dir=str(tmp_path))
-    mock_jira = MagicMock()
-    mock_jira.buscar_tickets_crm.return_value = []
+    mock_matcher = MagicMock()
+    mock_matcher.match.return_value = []
     mock_openai = MagicMock()
-    c = Fase3Clusterizador(storage=storage, jira=mock_jira, openai_client=mock_openai)
-    return c, storage, mock_openai
+    c = Fase3Clusterizador(storage=storage, matcher=mock_matcher, openai_client=mock_openai)
+    return c, storage, mock_openai, mock_matcher
 
 
 def test_crear_nuevo_cluster(tmp_clusterizador):
-    clusterizador, storage, mock_openai = tmp_clusterizador
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
     mock_openai.chat.completions.create.return_value = _make_openai_response({
         "accion": "CREAR_NUEVO",
         "cluster_id": None,
@@ -49,8 +49,7 @@ def test_crear_nuevo_cluster(tmp_clusterizador):
 
 
 def test_asignar_existente_incrementa_contador(tmp_clusterizador):
-    clusterizador, storage, mock_openai = tmp_clusterizador
-    # Seed an existing cluster
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     storage.save_cluster({
@@ -84,7 +83,7 @@ def test_asignar_existente_incrementa_contador(tmp_clusterizador):
 
 
 def test_next_cluster_id_increments(tmp_clusterizador):
-    clusterizador, storage, _ = tmp_clusterizador
+    clusterizador, storage, _, _ = tmp_clusterizador
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     storage.save_cluster({"cluster_id": "CLU-003", "nombre": "x", "estado": "abierto", "created_at": now, "updated_at": now})
@@ -94,8 +93,8 @@ def test_next_cluster_id_increments(tmp_clusterizador):
 
 
 def test_jira_error_no_bloquea(tmp_clusterizador):
-    clusterizador, storage, mock_openai = tmp_clusterizador
-    clusterizador.jira.buscar_tickets_crm.side_effect = Exception("jira down")
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
+    mock_matcher.match.side_effect = Exception("matcher down")
     mock_openai.chat.completions.create.return_value = _make_openai_response({
         "accion": "CREAR_NUEVO",
         "cluster_id": None,
@@ -112,10 +111,10 @@ def test_jira_error_no_bloquea(tmp_clusterizador):
 
 def test_phantom_cluster_falls_through_to_crear_nuevo(tmp_clusterizador):
     """If LLM returns ASIGNAR_EXISTENTE with a non-existent cluster_id, create a new cluster."""
-    clusterizador, storage, mock_openai = tmp_clusterizador
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
     mock_openai.chat.completions.create.return_value = _make_openai_response({
         "accion": "ASIGNAR_EXISTENTE",
-        "cluster_id": "CLU-999",  # does not exist in storage
+        "cluster_id": "CLU-999",
         "cluster_nuevo": None,
         "confianza": 0.75,
         "keywords_detectados": ["stripe"],
@@ -123,7 +122,6 @@ def test_phantom_cluster_falls_through_to_crear_nuevo(tmp_clusterizador):
     })
     ticket = {"zendesk_id": 5001, "subject": "Stripe error", "body_preview": "Stripe no funciona"}
     result = clusterizador.clusterizar(ticket)
-    # Should have created a new cluster instead of silently failing
     clusters = storage.get_clusters()
     assert len(clusters) == 1
     assert result["cluster_id"] != "CLU-999"
@@ -132,9 +130,8 @@ def test_phantom_cluster_falls_through_to_crear_nuevo(tmp_clusterizador):
 
 def test_missing_accion_key_falls_through_to_crear_nuevo(tmp_clusterizador):
     """If GPT-4o returns JSON without 'accion', treat as CREAR_NUEVO."""
-    clusterizador, storage, mock_openai = tmp_clusterizador
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
     mock_openai.chat.completions.create.return_value = _make_openai_response({
-        # no "accion" key — GPT hallucination
         "cluster_nuevo": {"nombre": "Error login", "sistema": "auth", "tipo_problema": "login", "severidad": "MEDIUM", "resumen": ""},
         "confianza": 0.6,
         "keywords_detectados": ["login"],
@@ -145,3 +142,34 @@ def test_missing_accion_key_falls_through_to_crear_nuevo(tmp_clusterizador):
     clusters = storage.get_clusters()
     assert len(clusters) == 1
     assert result["cluster_id"] == "CLU-001"
+
+
+def test_matcher_candidates_saved_on_cluster(tmp_clusterizador):
+    clusterizador, storage, mock_openai, mock_matcher = tmp_clusterizador
+    # Seed a jira ticket so pool is non-empty (matcher gate)
+    storage.save_jira_tickets(
+        [{"jira_id": "TEC-1", "url": "u", "summary": "s", "description_text": "",
+          "status": "Backlog", "status_category": "new", "priority": None,
+          "issuetype": "Task", "labels": [], "components": [], "assignee": None,
+          "created": "", "updated": ""}],
+        {"project": "TEC", "fecha_inicio": "", "fecha_fin": "", "last_sync": "",
+         "total_tickets": 1, "filtro": ""},
+    )
+    mock_matcher.match.return_value = [
+        {"jira_id": "TEC-1", "url": "https://x/TEC-1", "summary": "s",
+         "status": "Backlog", "confianza": 0.9, "razon": "match"}
+    ]
+    mock_openai.chat.completions.create.return_value = _make_openai_response({
+        "accion": "CREAR_NUEVO",
+        "cluster_id": None,
+        "cluster_nuevo": {"nombre": "x", "sistema": "stripe", "tipo_problema": "cobro", "severidad": "HIGH", "resumen": "r"},
+        "confianza": 0.9,
+        "keywords_detectados": ["stripe"],
+        "jira_query": "stripe",
+    })
+    ticket = {"zendesk_id": 7001, "subject": "s", "body_preview": "stripe"}
+    result = clusterizador.clusterizar(ticket)
+    clusters = storage.get_clusters()
+    assert len(result["jira_candidatos"]) == 1
+    assert result["jira_candidatos"][0]["jira_id"] == "TEC-1"
+    assert clusters[0]["jira_candidatos"][0]["jira_id"] == "TEC-1"

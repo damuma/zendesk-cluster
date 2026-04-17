@@ -4,17 +4,17 @@ from datetime import datetime, timezone
 from openai import OpenAI
 from dotenv import load_dotenv
 from storage import Storage
-from jira_client import JiraClient
+from jira_matcher import JiraMatcher
 
 load_dotenv()
 
 
 class Fase3Clusterizador:
-    def __init__(self, storage=None, jira=None, openai_client=None):
+    def __init__(self, storage=None, matcher=None, openai_client=None):
         self.openai = openai_client or OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         self.model = os.environ.get("OPENAI_MODEL", "gpt-4o")
         self.storage = storage or Storage()
-        self.jira = jira or JiraClient()
+        self.matcher = matcher or JiraMatcher(openai_client=self.openai, model=self.model)
 
     def _next_cluster_id(self, clusters: list[dict]) -> str:
         if not clusters:
@@ -90,14 +90,21 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
         except Exception:
             data = {"accion": "CREAR_NUEVO", "cluster_nuevo": None, "confianza": 0.0, "keywords_detectados": [], "jira_query": ""}
 
-        jira_query = data.get("jira_query", " ".join(data.get("keywords_detectados", [])[:3]))
-        jira_candidatos = []
-        if jira_query:
-            try:
-                jira_results = self.jira.buscar_tickets_crm(jira_query)
-                jira_candidatos = [r["jira_id"] for r in jira_results]
-            except Exception:
-                pass
+        jira_candidatos: list[dict] = []
+        try:
+            jira_pool = self.storage.get_jira_tickets()
+            if jira_pool:
+                preview = {
+                    "cluster_id": None,
+                    "nombre": (data.get("cluster_nuevo") or {}).get("nombre") or "",
+                    "sistema": (data.get("cluster_nuevo") or {}).get("sistema") or "",
+                    "tipo_problema": (data.get("cluster_nuevo") or {}).get("tipo_problema") or "",
+                    "resumen": (data.get("cluster_nuevo") or {}).get("resumen") or ticket.get("subject", ""),
+                    "anclas": ticket.get("fase2_anclas") or {},
+                }
+                jira_candidatos = self.matcher.match(preview, jira_pool, top_k=5)
+        except Exception:
+            jira_candidatos = []
 
         now = datetime.now(timezone.utc).isoformat()
 
@@ -111,11 +118,17 @@ Si accion es CREAR_NUEVO, cluster_id puede ser null."""
                 cluster["updated_at"] = now
                 if ticket["zendesk_id"] not in cluster.get("ticket_ids", []):
                     cluster.setdefault("ticket_ids", []).append(ticket["zendesk_id"])
-                existing_jira = set(cluster.get("jira_candidatos", []))
-                cluster["jira_candidatos"] = list(existing_jira | set(jira_candidatos))
+                existing = cluster.get("jira_candidatos", [])
+                by_id: dict[str, dict | str] = {}
+                for e in existing:
+                    jid = e if isinstance(e, str) else e.get("jira_id")
+                    if jid:
+                        by_id[jid] = e
+                for n in jira_candidatos:
+                    by_id[n["jira_id"]] = n
+                cluster["jira_candidatos"] = list(by_id.values())
                 self.storage.save_cluster(cluster)
             else:
-                # cluster_id from LLM not found — create a new cluster instead
                 accion = "CREAR_NUEVO"
 
         if accion == "CREAR_NUEVO":
