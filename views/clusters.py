@@ -14,215 +14,12 @@ def _parse_date(iso: str | None) -> date | None:
 
 SEVERIDAD_COLOR = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 TENDENCIA_ICON = {"creciente": "↑", "estable": "→", "decreciente": "↓", "nuevo": "✨"}
-PRIORITY_ICON = {"urgent": "🚨", "high": "🔴", "normal": "🟡", "low": "⚪"}
 
-_TOOLTIP_CSS = """
-<style>
-/* Let Streamlit's markdown container overflow so absolute tooltips are visible */
-div[data-testid="stMarkdownContainer"],
-div[data-testid="stMarkdownContainer"] > div,
-.stMarkdown {
-    overflow: visible !important;
-}
-
-/* ── Chip + tooltip ─────────────────────────────────────── */
-.zt-ticket,
-.zt-ticket * {
-    font-size: 12px !important;
-    line-height: 1.5 !important;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-    box-sizing: border-box;
-}
-.zt-ticket {
-    position: relative;
-    display: inline-block;
-    vertical-align: middle;
-    margin: 2px 6px;
-}
-/* The chip link */
-.zt-chip {
-    color: #4fa3e0 !important;
-    text-decoration: none !important;
-    font-family: monospace !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-}
-.zt-chip:hover { text-decoration: underline !important; }
-
-/* ── Tooltip bubble (absolute, above chip) ──────────────── */
-.zt-ticket .zt-tip {
-    visibility: hidden;
-    opacity: 0;
-    width: 400px;
-    max-width: min(400px, 90vw);
-    background: #1a1a2e;
-    color: #e0e0e0 !important;
-    border-radius: 10px;
-    padding: 14px 16px 10px;
-    position: absolute;
-    bottom: calc(100% + 10px);  /* always above the chip */
-    left: 0;                     /* anchor to chip left — never overflows left */
-    z-index: 9999;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.5);
-    pointer-events: auto;        /* allow clicks inside (for the Zendesk link) */
-    white-space: normal;
-    word-break: break-word;
-    /* Hide with delay so mouse can travel from chip to tooltip */
-    transition: opacity 0.12s ease 0s, visibility 0s ease 0s;
-}
-/* Keep visible while hovering chip OR the tooltip itself */
-.zt-ticket:hover .zt-tip,
-.zt-ticket .zt-tip:hover {
-    visibility: visible;
-    opacity: 1;
-}
-/* Arrow pointing down */
-.zt-tip::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 18px;
-    border: 7px solid transparent;
-    border-top-color: #1a1a2e;
-}
-
-/* ── Tooltip internals ──────────────────────────────────── */
-.zt-tip .zt-subject {
-    font-weight: 700 !important;
-    font-size: 13px !important;
-    color: #ffffff !important;
-    margin-bottom: 6px !important;
-    padding-bottom: 6px !important;
-    border-bottom: 1px solid #3a3a5a !important;
-}
-.zt-tip .zt-body {
-    color: #b8b8d0 !important;
-    margin-bottom: 8px !important;
-    font-size: 11.5px !important;
-}
-.zt-tip .zt-meta {
-    font-size: 11px !important;
-    color: #888 !important;
-    border-top: 1px solid #3a3a5a !important;
-    padding-top: 6px !important;
-    margin-top: 4px !important;
-}
-.zt-tip .zt-tags {
-    margin-top: 4px !important;
-    font-size: 11px !important;
-    color: #aaa !important;
-}
-.zt-tip .zt-open {
-    display: inline-block !important;
-    margin-top: 8px !important;
-    padding: 3px 8px !important;
-    background: #2a2a4a !important;
-    border-radius: 4px !important;
-    font-size: 11px !important;
-    color: #7ab8f5 !important;
-    text-decoration: none !important;
-    border: 1px solid #4a4a6a !important;
-}
-.zt-tip .zt-open:hover {
-    background: #3a3a5a !important;
-    color: #aad4ff !important;
-}
-.zt-conf-ok   { color: #4caf50 !important; }
-.zt-conf-warn { color: #ff9800 !important; }
-
-/* Jira chip variant (Atlassian blue) */
-.zt-jira-chip {
-    color: #0052cc !important;
-}
-</style>
-"""
-
-
-def _esc(text: str) -> str:
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&#39;")
-    )
-
-
-def _jira_chip_html(j: dict | str, jira_host: str) -> str:
-    """Renders a Jira candidate as a chip with hover tooltip (summary + razon + link)."""
-    if isinstance(j, str):
-        jid = j
-        url = f"https://{jira_host}/browse/{jid}"
-        return (
-            f'<span class="zt-ticket zt-jira">'
-            f'  <a class="zt-chip zt-jira-chip" href="{url}" target="_blank">🔷 {_esc(jid)}</a>'
-            f'</span>'
-        )
-    jid = j.get("jira_id", "?")
-    url = j.get("url") or f"https://{jira_host}/browse/{jid}"
-    summary = _esc(j.get("summary") or "Sin asunto")
-    status = _esc(j.get("status") or "—")
-    conf = j.get("confianza")
-    conf_str = f"{int(conf * 100)}%" if isinstance(conf, (int, float)) else "—"
-    razon_html = f'<div class="zt-body">{_esc(j.get("razon"))}</div>' if j.get("razon") else ""
-    return (
-        f'<span class="zt-ticket zt-jira">'
-        f'  <a class="zt-chip zt-jira-chip" href="{_esc(url)}" target="_blank">🔷 {_esc(jid)}</a>'
-        f'  <span class="zt-tip">'
-        f'    <div class="zt-subject">{summary}</div>'
-        f'    {razon_html}'
-        f'    <div class="zt-meta">'
-        f'      📌 <span class="zt-conf-ok">{status}</span>&nbsp;·&nbsp;🎯 Confianza: {conf_str}'
-        f'    </div>'
-        f'    <a class="zt-open" href="{_esc(url)}" target="_blank">🔗 Abrir en Jira →</a>'
-        f'  </span>'
-        f'</span>'
-    )
-
-
-def _ticket_html(t: dict, zendesk_subdomain: str) -> str:
-    tid = t.get("zendesk_id", "?")
-    url = t.get("zendesk_url") or f"https://{zendesk_subdomain}.zendesk.com/agent/tickets/{tid}"
-
-    subject  = _esc(t.get("subject") or "Sin asunto")
-    body     = _esc((t.get("body_preview") or "")[:450])
-    created  = (t.get("created_at") or "")[:19].replace("T", " ")
-    channel  = _esc(t.get("channel") or "—")
-    priority = t.get("priority") or "—"
-    p_icon   = PRIORITY_ICON.get(priority, "⚪")
-    ttype    = _esc(t.get("ticket_type") or "—")
-    tags_raw = t.get("tags", [])
-    tags_str = _esc(", ".join(tags_raw[:8]) or "—")
-
-    conf     = t.get("fase1_confianza", 0)
-    conf_pct = f"{conf:.0%}"
-    metodo   = _esc(t.get("fase1_modelo") or "—")
-    conf_cls = "zt-conf-ok" if conf >= 0.8 else "zt-conf-warn"
-    conf_icon = "✓" if conf >= 0.8 else "⚠"
-
-    return (
-        f'<span class="zt-ticket">'
-        f'  <a class="zt-chip" href="{url}" target="_blank">#{tid}</a>'
-        f'  <span class="zt-tip">'
-        f'    <div class="zt-subject">{subject}</div>'
-        f'    <div class="zt-body">{body}</div>'
-        f'    <div class="zt-meta">'
-        f'      📅 {created}&nbsp;·&nbsp;📡 {channel}&nbsp;·&nbsp;{p_icon} {priority}&nbsp;·&nbsp;📋 {ttype}<br>'
-        f'      <span class="{conf_cls}">{conf_icon} Fase 1: {conf_pct} ({metodo})</span>'
-        f'    </div>'
-        f'    <div class="zt-tags">🏷️ {tags_str}</div>'
-        f'    <a class="zt-open" href="{url}" target="_blank">🔗 Abrir en Zendesk →</a>'
-        f'  </span>'
-        f'</span>'
-    )
 
 
 def render():
-    st.markdown(_TOOLTIP_CSS, unsafe_allow_html=True)
     st.title("📊 Clusters de incidencias técnicas")
 
-    subdomain = os.environ.get("ZENDESK_SUBDOMAIN", "")
     storage   = Storage()
     all_tickets = storage.get_tickets()
     clusters    = storage.get_clusters(estado="abierto")
@@ -311,32 +108,25 @@ def render():
     st.markdown("---")
 
     # ── Lista de clusters ──────────────────────────────────────
-    jira_host = os.environ.get("JIRA_HOST", "eldiario.atlassian.net")
     for cluster in filtered:
         sev  = cluster.get("severidad", "MEDIUM")
         icon = SEVERIDAD_COLOR.get(sev, "⚪")
         tend = TENDENCIA_ICON.get(cluster.get("tendencia", "estable"), "→")
-        _jira_items = cluster.get("jira_candidatos", []) or []
-        _jira_count = len(_jira_items)
+        _jira_count = len(cluster.get("jira_candidatos", []) or [])
         jira_badge = f" · 🔷 {_jira_count}" if _jira_count else ""
+        cid = cluster["cluster_id"]
 
         with st.expander(f"{icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}{jira_badge}"):
-            col1, col2 = st.columns([2, 1])
+            col1, col2 = st.columns([3, 1])
             with col1:
                 st.markdown(f"**Resumen:** {cluster.get('resumen', '_Sin resumen_')}")
                 st.markdown(f"**Sistema:** `{cluster.get('sistema', '—')}` · **Tipo:** `{cluster.get('tipo_problema', '—')}`")
-                if _jira_items:
-                    jira_chips = " ".join(_jira_chip_html(j, jira_host) for j in _jira_items)
-                    st.markdown(f"**Jira candidatos:** {jira_chips}", unsafe_allow_html=True)
-                else:
-                    st.markdown("**Jira candidatos:** —")
+                st.caption(
+                    f"{_jira_count} candidatos Jira · "
+                    f"Creado {cluster.get('created_at', '')[:10]} · "
+                    f"Actualizado {cluster.get('updated_at', '')[:10]}"
+                )
             with col2:
-                st.metric("Tickets", cluster.get("ticket_count", 0))
-                st.caption(f"Creado: {cluster.get('created_at', '')[:10]}")
-                st.caption(f"Actualizado: {cluster.get('updated_at', '')[:10]}")
-
-            tickets = storage.get_cluster_tickets(cluster["cluster_id"])
-            if tickets:
-                st.markdown("**Últimos tickets:**")
-                chips = " ".join(_ticket_html(t, subdomain) for t in tickets[-10:])
-                st.markdown(chips, unsafe_allow_html=True)
+                if st.button("Ver detalle →", key=f"detail_{cid}", use_container_width=True):
+                    st.session_state["selected_cluster"] = cid
+                    st.rerun()
