@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
 Fase 0: Exploración NLP de tickets históricos.
-Genera data/conceptos.json con taxonomía de señales.
+Genera config/conceptos.json con taxonomía de señales.
 
 Uso:
     python fase0_explorar.py --days 30
-    python fase0_explorar.py --days 7 --output data/conceptos_test.json
+    python fase0_explorar.py --days 7 --output config/conceptos_test.json
 """
 import argparse
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -81,7 +82,8 @@ def calcular_coocurrencias(textos: list[str], top_terms: list[str]) -> dict:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=30)
-    parser.add_argument("--output", default="data/conceptos.json")
+    default_output = str(Path(os.environ.get("CONFIG_DIR", "./config")) / "conceptos.json")
+    parser.add_argument("--output", default=default_output)
     args = parser.parse_args()
 
     print(f"📥 Descargando tickets de los últimos {args.days} días...")

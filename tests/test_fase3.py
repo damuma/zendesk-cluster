@@ -38,7 +38,7 @@ def _make_openai_response(data: dict):
 
 @pytest.fixture
 def tmp_clusterizador(tmp_path):
-    storage = Storage(backend="json", data_dir=str(tmp_path))
+    storage = Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
     mock_matcher = MagicMock()
     mock_matcher.match.return_value = []
     mock_openai = MagicMock()

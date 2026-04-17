@@ -6,7 +6,7 @@ from storage import Storage
 
 @pytest.fixture
 def tmp_storage(tmp_path):
-    return Storage(backend="json", data_dir=str(tmp_path))
+    return Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
 
 def test_save_and_get_ticket(tmp_storage):
     ticket = {"zendesk_id": 1, "subject": "Test", "fase1_resultado": "TECNICO"}

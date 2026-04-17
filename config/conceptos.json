@@ -1,0 +1,261 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-04-16T07:05:22.668709",
+  "muestra_tickets": 10921,
+  "filtrado_tecnico": {
+    "indicadores_tecnico": [
+      "error",
+      "no funciona",
+      "no puedo",
+      "fallo",
+      "bug",
+      "problema técnico",
+      "cobrado dos veces",
+      "doble cobro",
+      "no carga",
+      "página en blanco",
+      "error 500",
+      "no me deja",
+      "no responde",
+      "sigue cobrando"
+    ],
+    "indicadores_no_tecnico": [
+      "quiero darme de baja",
+      "solicito baja",
+      "cambiar dirección",
+      "actualizar datos",
+      "información sobre",
+      "cuánto cuesta",
+      "factura del mes",
+      "cambio de cuenta bancaria"
+    ],
+    "umbral_confianza_ollama": 0.65
+  },
+  "sistemas": {
+    "stripe": {
+      "keywords": [
+        "stripe",
+        "tarjeta",
+        "visa",
+        "mastercard",
+        "cobro tarjeta"
+      ],
+      "descripcion": "stripe"
+    },
+    "paypal": {
+      "keywords": [
+        "paypal",
+        "pay pal"
+      ],
+      "descripcion": "paypal"
+    },
+    "sepa_iban": {
+      "keywords": [
+        "iban",
+        "sepa",
+        "domiciliación",
+        "domiciliacion",
+        "cuenta bancaria",
+        "recibo bancario"
+      ],
+      "descripcion": "sepa_iban"
+    },
+    "auth_login": {
+      "keywords": [
+        "login",
+        "contraseña",
+        "no puedo entrar",
+        "acceso",
+        "sesión",
+        "sesion"
+      ],
+      "descripcion": "auth_login"
+    },
+    "crm_frontend": {
+      "keywords": [
+        "página",
+        "pagina",
+        "botón",
+        "boton",
+        "formulario",
+        "no carga",
+        "pantalla"
+      ],
+      "descripcion": "crm_frontend"
+    }
+  },
+  "tipos_problema": {
+    "cobro_indebido": {
+      "keywords": [
+        "cobrado dos veces",
+        "doble cobro",
+        "cobro duplicado",
+        "cargo no autorizado"
+      ],
+      "severidad_default": "HIGH"
+    },
+    "baja_no_procesada": {
+      "keywords": [
+        "di de baja",
+        "sigo siendo cobrado",
+        "cancelé",
+        "baja no efectiva",
+        "no tramitaron"
+      ],
+      "severidad_default": "HIGH"
+    },
+    "error_acceso": {
+      "keywords": [
+        "no puedo entrar",
+        "contraseña no funciona",
+        "error al iniciar"
+      ],
+      "severidad_default": "MEDIUM"
+    },
+    "error_interfaz": {
+      "keywords": [
+        "no carga",
+        "error 500",
+        "página en blanco",
+        "no responde"
+      ],
+      "severidad_default": "MEDIUM"
+    }
+  },
+  "keywords_frecuentes": {
+    "socio": 8376,
+    "cuota": 3980,
+    "escribir": 2898,
+    "baja": 2722,
+    "correo": 2679,
+    "seguir": 2643,
+    "recibir": 2196,
+    "suscripción": 2031,
+    "dato": 2012,
+    "electrónico": 1925,
+    "comentario": 1834,
+    "problema": 1711,
+    "querer": 1700,
+    "llamar": 1690,
+    "necesitar": 1687,
+    "socia": 1663,
+    "teléfono": 1610,
+    "pago": 1606,
+    "acabar": 1545,
+    "registrar": 1513,
+    "acceder": 1505,
+    "sesión": 1491,
+    "dirección": 1481,
+    "indicar": 1451,
+    "contraseña": 1375,
+    "mecena": 1361,
+    "periodicidad": 1347,
+    "campo": 1341,
+    "gracia": 1341,
+    "formulario": 1333,
+    "noticia": 1305,
+    "nombre": 1276,
+    "volver": 1125,
+    "revista": 1117,
+    "eldiario.es": 1107,
+    "equipo": 1099,
+    "información": 1065,
+    "eliminar": 991,
+    "email": 983,
+    "tener": 947,
+    "intentar": 933,
+    "iniciar": 922,
+    "tarjeta": 919,
+    "cambiar": 916,
+    "pedir": 902,
+    "perfil": 898,
+    "dejar": 882,
+    "semana": 877,
+    "entrar": 859,
+    "llegar": 857,
+    "comentar": 824,
+    "favor": 815,
+    "acceso": 795,
+    "móvil": 779,
+    "euros": 774,
+    "boletín": 750,
+    "error": 742,
+    "quedar": 730,
+    "paso": 729,
+    "pasar": 723,
+    "anual": 709,
+    "cambio": 706,
+    "correcto": 703,
+    "leer": 699,
+    "envío": 681,
+    "incidencia": 678,
+    "renovar": 659,
+    "enviado": 649,
+    "enviar": 648,
+    "poner": 648,
+    "caso": 648,
+    "periodismo": 635,
+    "bajo": 633,
+    "revisar": 629,
+    "diario": 622,
+    "asociado": 620,
+    "periodista": 614,
+    "demanda": 612,
+    "artículo": 611,
+    "aplicación": 594,
+    "tribunal": 591,
+    "gracias": 590,
+    "solicitar": 590,
+    "pagar": 581,
+    "marzo": 576,
+    "comunicación": 567,
+    "tiempo": 563,
+    "renovación": 562,
+    "querella": 554,
+    "usuario": 543,
+    "esperar": 533,
+    "promoción": 508,
+    "enlace": 508,
+    "mensaje": 504,
+    "penal": 490,
+    "hacer": 489,
+    "oferta": 486,
+    "desear": 480,
+    "especificado": 476,
+    "motivo": 475
+  },
+  "coocurrencias_top": {
+    "cuota+socio": 1989,
+    "baja+socio": 1801,
+    "baja+cuota": 1759,
+    "email+socio": 1625,
+    "baja+email": 1607,
+    "correo+electrónico": 1521,
+    "cuota+email": 1515,
+    "socio+teléfono": 1434,
+    "comentario+socio": 1409,
+    "eldiario.es+gracia": 1401,
+    "email+teléfono": 1361,
+    "cuota+teléfono": 1360,
+    "baja+comentario": 1360,
+    "comentario+email": 1355,
+    "comentario+cuota": 1353,
+    "cuota+mecena": 1352,
+    "mecena+socio": 1350,
+    "baja+teléfono": 1348,
+    "cuota+periodicidad": 1339,
+    "periodicidad+socio": 1334,
+    "baja+mecena": 1334,
+    "email+mecena": 1333,
+    "comentario+teléfono": 1330,
+    "campo+email": 1329,
+    "campo+socio": 1327,
+    "formulario+socio": 1327,
+    "campo+cuota": 1327,
+    "mecena+periodicidad": 1326,
+    "registrar+socio": 1325,
+    "baja+periodicidad": 1325
+  },
+  "umbral_ancla_directa": 2,
+  "conceptos_descubiertos": []
+}

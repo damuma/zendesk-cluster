@@ -5,7 +5,7 @@ from storage import Storage
 
 @pytest.fixture
 def storage(tmp_path):
-    return Storage(backend="json", data_dir=str(tmp_path))
+    return Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
 
 
 META = {
@@ -38,7 +38,7 @@ def test_get_jira_metadata_empty(storage):
 
 def test_save_jira_tickets_writes_meta_first(storage, tmp_path):
     storage.save_jira_tickets([_ticket("TEC-1"), _ticket("TEC-2")], META)
-    raw = json.loads((tmp_path / "jira_tickets.json").read_text())
+    raw = json.loads((tmp_path / "data" / "jira_tickets.json").read_text())
     assert raw[0] == META
     assert raw[0].get("_meta") is True
     assert [t["jira_id"] for t in raw[1:]] == ["TEC-1", "TEC-2"]

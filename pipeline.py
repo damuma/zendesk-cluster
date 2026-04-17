@@ -29,7 +29,7 @@ def run_pipeline(horas: int = 24, dry_run: bool = False):
     storage = Storage()
     conceptos = storage.get_conceptos()
     if not conceptos:
-        print("❌ No hay conceptos.json. Ejecuta primero: python pipeline.py --fase0 --days 30")
+        print("❌ No hay config/conceptos.json. Ejecuta primero: python pipeline.py --fase0 --days 30")
         return
 
     print(f"📥 Descargando tickets de las últimas {horas}h...")

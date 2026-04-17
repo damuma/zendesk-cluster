@@ -190,7 +190,7 @@ def test_apply_split_single_group_no_op():
 # ── run_refine ─────────────────────────────────────────────
 @pytest.fixture
 def storage(tmp_path):
-    return Storage(backend="json", data_dir=str(tmp_path))
+    return Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
 
 
 def test_run_refine_integra_todo(storage):

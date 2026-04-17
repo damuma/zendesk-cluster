@@ -7,7 +7,7 @@ from storage import Storage
 
 @pytest.fixture
 def env(tmp_path):
-    storage = Storage(backend="json", data_dir=str(tmp_path))
+    storage = Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
     matcher = MagicMock()
     return storage, matcher
 

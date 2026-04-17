@@ -6,17 +6,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Storage:
-    def __init__(self, backend=None, data_dir=None):
+    def __init__(self, backend=None, data_dir=None, config_dir=None):
         self.backend = backend or os.environ.get("STORAGE_BACKEND", "json")
         self.data_dir = Path(data_dir or os.environ.get("DATA_DIR", "./data"))
+        self.config_dir = Path(config_dir or os.environ.get("CONFIG_DIR", "./config"))
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
 
     # ── JSON helpers ──────────────────────────────────────────
     # Files that hold a single dict (not a list)
     _DICT_FILES = {"conceptos.json"}
+    # Files that live in config_dir (tracked in git) instead of data_dir
+    # (which is gitignored for sensitive data).
+    _CONFIG_FILES = {"conceptos.json"}
+
+    def _path(self, filename: str) -> Path:
+        base = self.config_dir if filename in self._CONFIG_FILES else self.data_dir
+        return base / filename
 
     def _read(self, filename: str) -> list | dict:
-        path = self.data_dir / filename
+        path = self._path(filename)
         if not path.exists():
             return {} if filename in self._DICT_FILES else []
         with open(path) as f:
@@ -26,7 +35,7 @@ class Storage:
         """Atomic write: render to a sibling `.tmp` then rename. Prevents
         corruption if the process dies mid-write (critical for Fase 3.5 which
         rewrites the full clusters.json in one save_clusters call)."""
-        path = self.data_dir / filename
+        path = self._path(filename)
         tmp = path.with_suffix(path.suffix + ".tmp")
         with open(tmp, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=2, default=str)

@@ -16,7 +16,7 @@ def _ticket(key, status_cat="new", updated="2026-04-17T06:00:00+0200"):
 
 @pytest.fixture
 def env(tmp_path):
-    storage = Storage(backend="json", data_dir=str(tmp_path))
+    storage = Storage(backend="json", data_dir=str(tmp_path / "data"), config_dir=str(tmp_path / "config"))
     client = MagicMock()
     client.project = "TEC"
     client.approximate_count.return_value = 0
