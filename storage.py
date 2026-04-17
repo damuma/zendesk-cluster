@@ -34,6 +34,9 @@ class Storage:
                 tickets = [t for t in tickets if t.get(key) == val]
         return tickets
 
+    def get_tickets_by_id(self) -> dict[int, dict]:
+        return {t["zendesk_id"]: t for t in self.get_tickets() if t.get("zendesk_id") is not None}
+
     def save_ticket(self, ticket: dict) -> None:
         tickets = self._read("tickets.json")
         existing_ids = {t["zendesk_id"] for t in tickets}
@@ -49,6 +52,11 @@ class Storage:
         if estado:
             clusters = [c for c in clusters if c.get("estado") == estado]
         return clusters
+
+    def save_clusters(self, clusters: list[dict]) -> None:
+        """Overwrite clusters.json with the full list. Used by batch operations
+        (e.g., Fase 3.5 refine) that need to insert siblings atomically."""
+        self._write("clusters.json", clusters)
 
     def save_cluster(self, cluster: dict) -> None:
         clusters = self._read("clusters.json")
