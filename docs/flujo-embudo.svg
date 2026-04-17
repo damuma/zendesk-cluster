@@ -102,8 +102,18 @@
   <text x="460" y="538" text-anchor="middle" font-size="12" font-weight="bold" fill="#0d47a1">FASE 3 · Clustering fino con LLM</text>
   <text x="460" y="556" text-anchor="middle" font-size="10" fill="#333">GPT-4o · Solo tickets dudosos</text>
   <text x="460" y="572" text-anchor="middle" font-size="10" fill="#333">Contexto clusters existentes</text>
-  <text x="460" y="588" text-anchor="middle" font-size="10" fill="#1565c0">Cross-referencia Jira (proyecto TEC)</text>
+  <text x="460" y="588" text-anchor="middle" font-size="10" fill="#1565c0">Matcher híbrido → Jira candidatos</text>
   <text x="460" y="604" text-anchor="middle" font-size="10" fill="#0d47a1">~30-40% de tickets técnicos</text>
+
+  <!-- ── Jira local pool (alimenta Fase 3) ── -->
+  <rect x="30" y="520" width="220" height="80" rx="10" fill="#fff9c4" stroke="#f9a825" stroke-width="1.5" stroke-dasharray="4,2"/>
+  <text x="140" y="542" text-anchor="middle" font-size="11" font-weight="bold" fill="#f57f17">jira_tickets.json</text>
+  <text x="140" y="558" text-anchor="middle" font-size="10" fill="#555">fase0_jira.py · 60d · no-Done</text>
+  <text x="140" y="574" text-anchor="middle" font-size="10" fill="#555">keywords prefilter → GPT-4o</text>
+  <text x="140" y="590" text-anchor="middle" font-size="9" fill="#f57f17">fase4_jira.py re-matchea clusters</text>
+
+  <!-- Arrow jira_tickets.json → Fase 3 -->
+  <line x1="250" y1="560" x2="310" y2="560" stroke="#1565c0" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrBlue)"/>
 
   <!-- Arrow fase3 → output -->
   <line x1="460" y1="605" x2="460" y2="630" stroke="#555" stroke-width="2" marker-end="url(#arr)"/>
