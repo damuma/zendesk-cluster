@@ -10,6 +10,8 @@ from typing import Iterable
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from email_extract import extract_emails, INTERNAL_DOMAINS
+
 load_dotenv()
 
 
@@ -90,6 +92,20 @@ class JiraMatcher:
         bonus = 2 * len(keywords & label_tokens)
         return base + bonus
 
+    # ── email-aware helpers ─────────────────────────────────
+    def _extract_jira_emails(self, jira: dict) -> set[str]:
+        txt = f"{jira.get('summary', '')} {jira.get('description_text', '')}"
+        return set(extract_emails(txt, exclude_domains=INTERNAL_DOMAINS))
+
+    def _cluster_emails(self, cluster: dict, tickets_by_id: dict[int, dict]) -> set[str]:
+        out: set[str] = set()
+        for tid in cluster.get("ticket_ids") or []:
+            t = tickets_by_id.get(tid) or {}
+            for e in t.get("emails_asociados") or []:
+                if e:
+                    out.add(e.lower())
+        return out
+
     def _prefilter_keywords(self, signals: dict, pool: Iterable[dict], limit: int = 15) -> list[dict]:
         scored: list[tuple[int, dict]] = []
         for t in pool:
@@ -100,20 +116,36 @@ class JiraMatcher:
         return [t for _, t in scored[:limit]]
 
     # ── LLM selection ───────────────────────────────────────
-    def _llm_select(self, signals: dict, candidatos: list[dict], top_k: int) -> list[dict]:
-        brief = [
-            {
+    def _llm_select(
+        self,
+        signals: dict,
+        candidatos: list[dict],
+        top_k: int,
+        email_match_by_id: dict[str, list[dict]] | None = None,
+    ) -> list[dict]:
+        email_match_by_id = email_match_by_id or {}
+        brief = []
+        for c in candidatos:
+            item = {
                 "jira_id": c["jira_id"],
                 "summary": c.get("summary", ""),
                 "labels": c.get("labels", []),
                 "status": c.get("status"),
             }
-            for c in candidatos
-        ]
+            if c["jira_id"] in email_match_by_id:
+                item["email_match"] = [e["email"] for e in email_match_by_id[c["jira_id"]]]
+            brief.append(item)
+
         prompt = f"""Eres un ingeniero de soporte técnico. Te doy un CLUSTER de incidencias
 de usuarios y una lista de TICKETS de Jira candidatos. Elige los Jira que
 corresponden al mismo problema técnico del cluster. Descarta los que solo
 comparten palabras sueltas pero son de otro dominio.
+
+IMPORTANTE: si un candidato incluye `email_match`, significa que el Jira
+menciona al mismo usuario que aparece en uno o más tickets del cluster.
+Es una señal FUERTE de relevancia, PERO no suficiente por sí sola: valida
+siempre que el problema técnico del Jira encaja con el cluster. Si el
+problema diverge (mismo usuario, otra incidencia), descártalo igualmente.
 
 CLUSTER:
 - Resumen: {signals['resumen']}
@@ -139,27 +171,61 @@ Responde SOLO con JSON:
             base = by_id.get(m.get("jira_id"))
             if not base:
                 continue
+            jid = base["jira_id"]
+            em = email_match_by_id.get(jid, [])
+            confianza = m.get("confianza")
+            razon = m.get("razon", "")
+            if em:
+                if confianza is not None:
+                    confianza = max(float(confianza), 0.95)
+                emails_txt = ", ".join(sorted({e["email"] for e in em}))
+                razon = f"email de usuario ({emails_txt}) + concepto coincidente — {razon}"
             result.append({
-                "jira_id": base["jira_id"],
+                "jira_id": jid,
                 "url": base["url"],
                 "summary": base.get("summary", ""),
                 "description_text": base.get("description_text", ""),
                 "status": base.get("status"),
-                "confianza": m.get("confianza"),
-                "razon": m.get("razon", ""),
+                "confianza": confianza,
+                "razon": razon,
+                "email_match": em,
             })
         return result
 
     # ── public entry point ──────────────────────────────────
-    def match(self, cluster: dict, jira_pool: list[dict], top_k: int = 5) -> list[dict]:
+    def match(
+        self,
+        cluster: dict,
+        jira_pool: list[dict],
+        top_k: int = 5,
+        tickets_by_id: dict[int, dict] | None = None,
+    ) -> list[dict]:
         if not jira_pool:
             return []
         signals = self._cluster_signals(cluster)
-        if not signals["keywords"]:
+        cluster_emails = self._cluster_emails(cluster, tickets_by_id or {})
+        email_match_by_id: dict[str, list[dict]] = {}
+        if cluster_emails:
+            for j in jira_pool:
+                inter = self._extract_jira_emails(j) & cluster_emails
+                if inter:
+                    email_match_by_id[j["jira_id"]] = [{"email": e} for e in sorted(inter)]
+
+        if not signals["keywords"] and not email_match_by_id:
             return []
-        candidatos = self._prefilter_keywords(signals, jira_pool, limit=15)
+
+        candidatos: list[dict] = []
+        if signals["keywords"]:
+            candidatos = self._prefilter_keywords(signals, jira_pool, limit=15)
+        by_id = {c["jira_id"]: c for c in candidatos}
+        for j in jira_pool:
+            if j["jira_id"] in email_match_by_id and j["jira_id"] not in by_id:
+                candidatos.append(j)
+                by_id[j["jira_id"]] = j
+
         if not candidatos:
             return []
+
         if self.openai is None:
             return [
                 {
@@ -168,9 +234,14 @@ Responde SOLO con JSON:
                     "summary": c.get("summary", ""),
                     "description_text": c.get("description_text", ""),
                     "status": c.get("status"),
-                    "confianza": None,
-                    "razon": "sin LLM disponible",
+                    "confianza": 0.9 if c["jira_id"] in email_match_by_id else None,
+                    "razon": (
+                        "email match sin validación LLM — verificar concepto manualmente"
+                        if c["jira_id"] in email_match_by_id
+                        else "sin LLM disponible"
+                    ),
+                    "email_match": email_match_by_id.get(c["jira_id"], []),
                 }
                 for c in candidatos[:top_k]
             ]
-        return self._llm_select(signals, candidatos, top_k)
+        return self._llm_select(signals, candidatos, top_k, email_match_by_id=email_match_by_id)
