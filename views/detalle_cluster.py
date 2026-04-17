@@ -34,8 +34,7 @@ def render(cluster_id: str):
     if not cluster:
         st.error(f"Cluster `{cluster_id}` no encontrado.")
         if st.button("← Volver"):
-            del st.session_state["selected_cluster"]
-            st.rerun()
+            _goto_list()
         return
 
     _render_header(cluster)
@@ -63,9 +62,7 @@ def _render_header(cluster: dict):
     st.title(f"{icon} {cluster['nombre']}")
 
     if st.button("← Volver a clusters"):
-        _clear_selection_state()
-        del st.session_state["selected_cluster"]
-        st.rerun()
+        _goto_list()
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tickets Zendesk", cluster.get("ticket_count", 0))
@@ -86,6 +83,12 @@ def _clear_selection_state():
     for k in list(st.session_state.keys()):
         if k.startswith(("z_df_", "j_df_")):
             del st.session_state[k]
+
+
+def _goto_list():
+    _clear_selection_state()
+    st.query_params.clear()
+    st.rerun()
 
 
 # ── Tables ────────────────────────────────────────────────────

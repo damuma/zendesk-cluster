@@ -6,10 +6,12 @@ st.set_page_config(
     layout="wide",
 )
 
-# Drill-down takes priority over normal navigation
-if "selected_cluster" in st.session_state:
+# URL ?cluster=CLU-XXX takes priority (shareable / bookmarkable drill-down).
+cluster_id = st.query_params.get("cluster")
+
+if cluster_id:
     from views.detalle_cluster import render as render_detalle
-    render_detalle(st.session_state["selected_cluster"])
+    render_detalle(cluster_id)
 else:
     page = st.sidebar.radio(
         "Navegación",

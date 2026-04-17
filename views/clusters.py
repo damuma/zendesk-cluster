@@ -128,5 +128,5 @@ def render():
                 )
             with col2:
                 if st.button("Ver detalle →", key=f"detail_{cid}", use_container_width=True):
-                    st.session_state["selected_cluster"] = cid
+                    st.query_params["cluster"] = cid
                     st.rerun()
