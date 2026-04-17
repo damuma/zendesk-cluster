@@ -180,4 +180,4 @@ def render():
                     f"Actualizado {cluster.get('updated_at', '')[:10]}"
                 )
             with col2:
-                st.link_button("Ver detalle →", f"?cluster={cid}", use_container_width=True)
+                st.link_button("Ver detalle →", f"?cluster={cid}", width="stretch")

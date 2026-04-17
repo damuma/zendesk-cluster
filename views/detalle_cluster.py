@@ -90,6 +90,21 @@ def _format_jira_description(text: str) -> str:
     return fixed
 
 
+def _resolve_cluster_tickets(storage: Storage, cluster: dict) -> list[dict]:
+    """Resolve the tickets belonging to a cluster from its `ticket_ids`.
+
+    Sub-clusters created by Fase 3.5 don't rewrite each ticket's
+    `fase3_cluster_id` — the parent→child membership lives only on the
+    cluster's `ticket_ids`. Going through that list (fallback to the legacy
+    reverse filter only when missing) works for both parents and children.
+    """
+    ids = cluster.get("ticket_ids") or []
+    if not ids:
+        return storage.get_cluster_tickets(cluster["cluster_id"])
+    by_id = storage.get_tickets_by_id()
+    return [by_id[i] for i in ids if i in by_id]
+
+
 def render(cluster_id: str):
     storage = Storage()
     all_clusters = storage.get_clusters()
@@ -109,7 +124,7 @@ def render(cluster_id: str):
     _render_header(cluster)
     st.markdown("---")
 
-    tickets = storage.get_cluster_tickets(cluster_id)
+    tickets = _resolve_cluster_tickets(storage, cluster)
     jira_items = cluster.get("jira_candidatos", []) or []
     jira_pool_by_id = {t["jira_id"]: t for t in storage.get_jira_tickets()}
 
@@ -227,7 +242,7 @@ def _render_zendesk_table(col, tickets: list[dict], cluster_id: str) -> int | No
             on_select="rerun",
             selection_mode="single-row",
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             height=360,
         )
         rows = event.selection.rows if event else []
@@ -265,7 +280,7 @@ def _render_jira_table(col, jira_items: list, cluster_id: str) -> int | None:
             on_select="rerun",
             selection_mode="single-row",
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             height=360,
         )
         sel = event.selection.rows if event else []
