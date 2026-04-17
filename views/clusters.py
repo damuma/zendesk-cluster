@@ -127,6 +127,4 @@ def render():
                     f"Actualizado {cluster.get('updated_at', '')[:10]}"
                 )
             with col2:
-                if st.button("Ver detalle →", key=f"detail_{cid}", use_container_width=True):
-                    st.query_params["cluster"] = cid
-                    st.rerun()
+                st.link_button("Ver detalle →", f"?cluster={cid}", use_container_width=True)
