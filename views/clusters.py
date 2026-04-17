@@ -41,6 +41,17 @@ def render():
         + (f"  ·  {(data_max - data_min).days + 1} días" if data_min != data_max else "  ·  hoy")
     )
 
+    jira_meta = storage.get_jira_metadata() or {}
+    jira_inicio = _parse_date(jira_meta.get("fecha_inicio"))
+    jira_fin    = _parse_date(jira_meta.get("fecha_fin"))
+    if jira_inicio and jira_fin:
+        st.caption(
+            f"🔷 Jira pool: **{jira_inicio.strftime('%d %b %Y')}** → **{jira_fin.strftime('%d %b %Y')}**"
+            f"  ·  último sync: {(jira_meta.get('last_sync') or '')[:10]}"
+        )
+    else:
+        st.caption("🔷 Jira pool: _sin descargar_ · ejecuta `python fase0_jira.py --full`")
+
     # ── Selector de rango ──────────────────────────────────────
     date_range = st.date_input(
         "Filtrar por fecha de proceso",
@@ -82,6 +93,21 @@ def render():
     m3.metric("Descartados", descartados)
     m4.metric("Clusters activos", len(clusters_en_rango))
     m5.metric("Tickets en clusters", total_en_clusters)
+
+    # ── Métricas de Jira ───────────────────────────────────────
+    clusters_con_jira = [c for c in clusters_en_rango if c.get("jira_candidatos")]
+    total_candidatos  = sum(len(c.get("jira_candidatos") or []) for c in clusters_en_rango)
+    jira_pool_total   = jira_meta.get("total_tickets", 0) or 0
+    rango_jira = "—"
+    if jira_inicio and jira_fin:
+        rango_jira = f"{jira_inicio.strftime('%d %b')} → {jira_fin.strftime('%d %b %Y')}"
+
+    j1, j2, j3, j4, j5 = st.columns(5)
+    j1.metric("Jira en pool", jira_pool_total)
+    j2.metric("Rango Jira", rango_jira)
+    j3.metric("Clusters con Jira", f"{len(clusters_con_jira)} / {len(clusters_en_rango)}")
+    j4.metric("Candidatos totales", total_candidatos)
+    j5.empty()
     st.markdown("---")
 
     # ── Filtros de cluster ─────────────────────────────────────
