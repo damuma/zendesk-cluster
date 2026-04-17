@@ -46,6 +46,32 @@ def test_fase2_filtra_dominios_internos(clasificador):
     assert r["emails_asociados"] == ["cliente@gmail.com"]
 
 
+def test_fase2_excluye_requester_email_interno(clasificador):
+    """Si el ticket lo abre un agente (email interno), no debe aparecer en
+    emails_asociados aunque sea el requester — el email del cliente está
+    en el body y se captura por `mencionados`."""
+    t = {
+        "subject": "cliente reporta fallo",
+        "body_preview": "El socio cliente@gmail.com no puede acceder.",
+        "requester_email": "contacto@eldiario.es",
+    }
+    r = clasificador.preclasificar(t)
+    assert r["emails_mencionados"] == ["cliente@gmail.com"]
+    assert r["emails_asociados"] == ["cliente@gmail.com"]
+    # El requester_email interno NO se mezcla con los asociados.
+    assert "contacto@eldiario.es" not in r["emails_asociados"]
+
+
+def test_fase2_requester_email_externo_si_se_incluye(clasificador):
+    t = {
+        "subject": "x",
+        "body_preview": "",
+        "requester_email": "cliente@gmail.com",
+    }
+    r = clasificador.preclasificar(t)
+    assert r["emails_asociados"] == ["cliente@gmail.com"]
+
+
 def test_detecta_sistema_stripe(clasificador):
     ticket = {"subject": "Cobro Stripe", "body_preview": "Me han cobrado dos veces via stripe con mi tarjeta"}
     result = clasificador.preclasificar(ticket)

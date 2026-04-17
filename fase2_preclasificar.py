@@ -49,10 +49,16 @@ class Fase2Preclasificador:
 
         texto_para_emails = f"{ticket.get('subject', '')} {ticket.get('body_preview', '')}"
         mencionados = extract_emails(texto_para_emails, exclude_domains=INTERNAL_DOMAINS)
-        req_email = ticket.get("requester_email")
+        req_email = (ticket.get("requester_email") or "").lower().strip()
         asociados_set = set(mencionados)
-        if req_email:
-            asociados_set.add(req_email.lower())
+        if req_email and "@" in req_email:
+            # Excluir requester_email si pertenece a un dominio interno: el
+            # ticket lo puede abrir un agente en nombre del cliente real, y
+            # el email del cliente aparece en el body (ya capturado en
+            # `mencionados`). Un email interno NO debe cruzarse con Jira.
+            domain = req_email.rsplit("@", 1)[1]
+            if domain not in INTERNAL_DOMAINS:
+                asociados_set.add(req_email)
         emails_asociados = sorted(asociados_set)
 
         return {
