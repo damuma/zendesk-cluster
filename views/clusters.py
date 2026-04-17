@@ -104,7 +104,11 @@ def render():
 
     j1, j2, j3, j4, j5 = st.columns(5)
     j1.metric("Jira en pool", jira_pool_total)
-    j2.metric("Rango Jira", rango_jira)
+    j2.markdown(
+        "<div style='color:rgba(49,51,63,0.6); font-size:14px; margin-bottom:6px;'>Rango Jira</div>"
+        f"<div style='font-size:18px; line-height:1.2; padding-top:6px;'>{rango_jira}</div>",
+        unsafe_allow_html=True,
+    )
     j3.metric("Clusters con Jira", f"{len(clusters_con_jira)} / {len(clusters_en_rango)}")
     j4.metric("Candidatos totales", total_candidatos)
     j5.empty()
