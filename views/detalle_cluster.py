@@ -9,19 +9,39 @@ from storage import Storage
 SEVERIDAD_COLOR = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 
 
+_BLOCK_TAG_RE = re.compile(
+    r"</?(?:p|div|br|li|tr|h[1-6]|blockquote|pre|section|article)\b[^>]*>",
+    re.IGNORECASE,
+)
+_TAG_RE = re.compile(r"<[^>]+>")
+_HTML_ENTITIES = {
+    "&nbsp;": " ",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&#39;": "'",
+    "&quot;": '"',
+}
+
+
 def _strip_html(text: str) -> str:
     if not text:
         return ""
-    clean = re.sub(r"<[^>]+>", " ", text)
-    clean = (
-        clean.replace("&nbsp;", " ")
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&#39;", "'")
-        .replace("&quot;", '"')
-    )
-    return re.sub(r"\s+", " ", clean).strip()
+    clean = _BLOCK_TAG_RE.sub("\n", text)
+    clean = _TAG_RE.sub("", clean)
+    for entity, repl in _HTML_ENTITIES.items():
+        clean = clean.replace(entity, repl)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in clean.splitlines()]
+    out: list[str] = []
+    blank = False
+    for line in lines:
+        if line:
+            out.append(line)
+            blank = False
+        elif not blank and out:
+            out.append("")
+            blank = True
+    return "\n".join(out).strip()
 
 
 def render(cluster_id: str):
@@ -42,6 +62,7 @@ def render(cluster_id: str):
 
     tickets = storage.get_cluster_tickets(cluster_id)
     jira_items = cluster.get("jira_candidatos", []) or []
+    jira_pool_by_id = {t["jira_id"]: t for t in storage.get_jira_tickets()}
 
     col_z, col_j = st.columns(2)
     z_selected = _render_zendesk_table(col_z, tickets, cluster_id)
@@ -52,6 +73,7 @@ def render(cluster_id: str):
         jira_items=jira_items,
         z_idx=z_selected,
         j_idx=j_selected,
+        jira_pool_by_id=jira_pool_by_id,
     )
 
 
@@ -161,13 +183,21 @@ def _render_jira_table(col, jira_items: list, cluster_id: str) -> int | None:
 
 
 # ── Detail panels ─────────────────────────────────────────────
-def _render_detail_panels(tickets, jira_items, z_idx, j_idx):
+def _render_detail_panels(tickets, jira_items, z_idx, j_idx, jira_pool_by_id):
     if z_idx is None and j_idx is None:
         st.caption("👆 Selecciona una fila de Zendesk y/o de Jira para ver su detalle aquí abajo y compararlos.")
         return
 
     st.markdown("---")
     st.subheader("📖 Detalle")
+
+    both_selected = z_idx is not None and j_idx is not None
+    if both_selected:
+        jira_item = jira_items[j_idx]
+        razon = jira_item.get("razon") if isinstance(jira_item, dict) else None
+        if razon:
+            st.markdown(f"**Razón del match:** {razon}")
+
     left, right = st.columns(2)
 
     with left:
@@ -180,9 +210,38 @@ def _render_detail_panels(tickets, jira_items, z_idx, j_idx):
     with right:
         if j_idx is not None:
             item = jira_items[j_idx]
-            _render_jira_detail(item)
+            _render_jira_detail(item, jira_pool_by_id, hide_razon=both_selected)
         else:
             st.caption("_Selecciona un candidato Jira para ver su detalle_")
+
+
+def _render_ticket_body(text: str) -> None:
+    import html as _html
+
+    escaped = _html.escape(text)
+    st.markdown(
+        f"""
+<div style="
+    border-left: 3px solid #d0d7de;
+    background: #f6f8fa;
+    padding: 0.75rem 1rem;
+    margin: 0.25rem 0 0.75rem 0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #24292f;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
+">{escaped}</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_zendesk_detail(t: dict):
@@ -208,7 +267,7 @@ def _render_zendesk_detail(t: dict):
     body_clean = _strip_html(t.get("body_preview") or "")
     if body_clean:
         st.markdown("**Cuerpo del ticket:**")
-        st.text(body_clean)
+        _render_ticket_body(body_clean)
 
     if t.get("fase3_resumen_llm"):
         st.markdown(f"**Resumen LLM:** {t['fase3_resumen_llm']}")
@@ -220,7 +279,7 @@ def _render_zendesk_detail(t: dict):
     st.link_button("🔗 Abrir en Zendesk", url)
 
 
-def _render_jira_detail(item):
+def _render_jira_detail(item, jira_pool_by_id: dict | None = None, hide_razon: bool = False):
     jira_host = os.environ.get("JIRA_HOST", "eldiario.atlassian.net")
     if isinstance(item, str):
         jid = item
@@ -243,8 +302,15 @@ def _render_jira_detail(item):
     meta_cols[0].markdown(f"**Estado:** `{status}`")
     meta_cols[1].markdown(f"**Confianza del match:** `{conf_str}`")
 
+    pool_entry = (jira_pool_by_id or {}).get(jid) if jira_pool_by_id else None
+    description = item.get("description_text") or (pool_entry.get("description_text") if pool_entry else "")
+    body_clean = _strip_html(description or "")
+    if body_clean:
+        st.markdown("**Descripción:**")
+        _render_ticket_body(body_clean)
+
     razon = item.get("razon")
-    if razon:
+    if razon and not hide_razon:
         st.markdown(f"**Razón del match:** {razon}")
 
     st.link_button("🔗 Abrir en Jira", url)
