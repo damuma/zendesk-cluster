@@ -125,6 +125,12 @@ class JiraMatcher:
         return [t for _, t in scored[:limit]]
 
     # ── LLM selection ───────────────────────────────────────
+    # Umbral mínimo de confianza tras validación LLM. Matches por debajo se
+    # descartan (el LLM a veces emite 0.4-0.6 "mismo dominio, otro problema").
+    MIN_CONFIANZA = 0.7
+    # Trunca la descripción Jira enviada al LLM para limitar tokens.
+    _DESC_TRUNCATE = 600
+
     def _llm_select(
         self,
         signals: dict,
@@ -135,9 +141,13 @@ class JiraMatcher:
         email_match_by_id = email_match_by_id or {}
         brief = []
         for c in candidatos:
+            desc = (c.get("description_text") or "").strip()
+            if len(desc) > self._DESC_TRUNCATE:
+                desc = desc[: self._DESC_TRUNCATE] + "…"
             item = {
                 "jira_id": c["jira_id"],
                 "summary": c.get("summary", ""),
+                "description": desc,
                 "labels": c.get("labels", []),
                 "status": c.get("status"),
             }
@@ -145,16 +155,26 @@ class JiraMatcher:
                 item["email_match"] = [e["email"] for e in email_match_by_id[c["jira_id"]]]
             brief.append(item)
 
-        prompt = f"""Eres un ingeniero de soporte técnico. Te doy un CLUSTER de incidencias
-de usuarios y una lista de TICKETS de Jira candidatos. Elige los Jira que
-corresponden al mismo problema técnico del cluster. Descarta los que solo
-comparten palabras sueltas pero son de otro dominio.
+        prompt = f"""Eres un ingeniero de soporte técnico. Te doy un CLUSTER de
+incidencias de usuarios y una lista de TICKETS de Jira candidatos. Elige
+SÓLO los Jira que describen EL MISMO FALLO TÉCNICO REPRODUCIBLE del
+cluster — NO basta con que compartan dominio (suscripción, acceso, pagos)
+o vocabulario.
 
-IMPORTANTE: si un candidato incluye `email_match`, significa que el Jira
-menciona al mismo usuario que aparece en uno o más tickets del cluster.
-Es una señal FUERTE de relevancia, PERO no suficiente por sí sola: valida
-siempre que el problema técnico del Jira encaja con el cluster. Si el
-problema diverge (mismo usuario, otra incidencia), descártalo igualmente.
+Reglas estrictas:
+1. Si el Jira describe un escenario distinto del cluster (p. ej. el cluster
+   habla de "no puedo acceder tras pagar" y el Jira de "no se puede
+   reactivar tras baja"), DESCÁRTALO aunque haya palabras en común.
+2. Lee la `description` completa del Jira antes de decidir. No decidas
+   sólo por `summary`.
+3. Usa confianza 0.9+ sólo si estás muy seguro de que es el MISMO bug.
+   0.7-0.8 si es una sub-variante plausible. <0.7 NO lo devuelvas.
+4. Si NINGÚN Jira encaja, devuelve `{{"matches": []}}`. Es la respuesta
+   correcta para muchos clusters.
+5. Si un candidato incluye `email_match`, significa que el Jira menciona
+   al mismo usuario que uno o más tickets del cluster. Es una señal
+   FUERTE de relevancia PERO sólo cuando el problema también coincide;
+   mismo usuario con incidencia distinta → descartar igualmente.
 
 CLUSTER:
 - Resumen: {signals['resumen']}
@@ -183,6 +203,11 @@ Responde SOLO con JSON:
             jid = base["jira_id"]
             em = email_match_by_id.get(jid, [])
             confianza = m.get("confianza")
+            # Filtro mínimo: descarta matches flojos salvo que haya email_match
+            # (ese caso ya se boostea a 0.95 más abajo).
+            if not em:
+                if confianza is None or float(confianza) < self.MIN_CONFIANZA:
+                    continue
             razon = m.get("razon", "")
             if em:
                 # Email confirmado por el LLM (devolvió el candidato): boost

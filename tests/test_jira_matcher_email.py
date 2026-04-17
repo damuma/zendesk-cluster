@@ -123,6 +123,48 @@ def test_match_no_email_no_keywords_returns_empty():
                              "url": "u", "labels": []}]) == []
 
 
+def test_match_drops_candidates_below_min_confianza():
+    """El LLM a veces devuelve confianzas bajas para matches de mismo
+    dominio pero problema distinto. El matcher debe descartar <0.7
+    salvo email_match (que se boostea a 0.95)."""
+    cluster = {"resumen": "login bloqueado", "anclas": {"sistemas": ["auth"]},
+               "ticket_ids": []}
+    jira_pool = [
+        {"jira_id": "TEC-HIGH", "summary": "auth login", "description_text": "d",
+         "url": "u", "labels": []},
+        {"jira_id": "TEC-LOW", "summary": "auth algo distinto", "description_text": "d",
+         "url": "u", "labels": []},
+    ]
+    openai = _fake_openai_with_response([
+        {"jira_id": "TEC-HIGH", "confianza": 0.85, "razon": "ok"},
+        {"jira_id": "TEC-LOW", "confianza": 0.5, "razon": "mismo dominio"},
+    ])
+    m = JiraMatcher(openai_client=openai)
+    result = m.match(cluster, jira_pool, top_k=5, tickets_by_id={})
+    ids = {r["jira_id"] for r in result}
+    assert ids == {"TEC-HIGH"}  # LOW descartado por debajo de MIN_CONFIANZA
+
+
+def test_match_keeps_low_confianza_if_email_match():
+    """Con email_match, el candidato se mantiene aunque el LLM emita
+    confianza baja — porque el boost lo subirá a 0.95 después."""
+    cluster = {"resumen": "x", "anclas": {"sistemas": ["s"]},
+               "ticket_ids": [1]}
+    tickets_by_id = {1: {"emails_asociados": ["u@x.com"]}}
+    jira_pool = [
+        {"jira_id": "TEC-EM", "summary": "s", "description_text": "u@x.com",
+         "url": "u", "labels": []},
+    ]
+    openai = _fake_openai_with_response([
+        {"jira_id": "TEC-EM", "confianza": 0.5, "razon": "ok con dudas"},
+    ])
+    m = JiraMatcher(openai_client=openai)
+    result = m.match(cluster, jira_pool, tickets_by_id=tickets_by_id)
+    assert len(result) == 1
+    # Con email_match el boost actúa pese a la baja confianza del LLM.
+    assert result[0]["confianza"] >= 0.95
+
+
 def test_match_sin_llm_marca_email_match_con_confianza_0_9():
     cluster = {
         "resumen": "algo",
