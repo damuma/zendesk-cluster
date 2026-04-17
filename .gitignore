@@ -1,7 +1,6 @@
 .env
-data/*.json
-data/*.csv
-data/*.parquet
+data/
+!data/.gitkeep
 venv/
 **/__pycache__/
 .pytest_cache/
