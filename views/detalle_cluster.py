@@ -1,3 +1,4 @@
+import html as _html
 import os
 import re
 
@@ -5,6 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from storage import Storage
+from zendesk_client import ZendeskClient
 
 SEVERIDAD_COLOR = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}
 
@@ -44,12 +46,54 @@ def _strip_html(text: str) -> str:
     return "\n".join(out).strip()
 
 
+_JIRA_SECTION_LABELS = (
+    # Template "bug" clásico de Jira
+    "Contexto", "Descripción", "Descripcion",
+    "Pasos para reproducir", "Pasos a reproducir", "Pasos",
+    "Resultado esperado", "Resultado actual",
+    "Comportamiento esperado", "Comportamiento actual",
+    "Impacto", "Solución", "Solucion",
+    "Necesitamos revisar",
+    # Template "propuesta/feature"
+    "En resumen", "Resumen",
+    "Propuesta de mensaje de error", "Propuesta de solución", "Propuesta de solucion",
+    "Propuesta de mensaje", "Propuesta",
+    "Criterios de aceptación", "Criterios de aceptacion", "Criterios",
+    "Requisitos", "Observaciones", "Observación", "Observacion",
+    "Objetivo", "Alcance",
+    "Motivación", "Motivacion",
+    "Justificación", "Justificacion",
+    "Precondiciones", "Antecedentes",
+    "Nota", "Notas", "Mensaje",
+)
+# Longer variants first so the alternation doesn't prefer a short prefix
+# ("Propuesta" vs "Propuesta de mensaje de error").
+_SORTED_LABELS = sorted(_JIRA_SECTION_LABELS, key=len, reverse=True)
+_LABEL_BREAK_RE = re.compile(
+    r"(?<!\n)\s*(?=(?:" + "|".join(re.escape(s) for s in _SORTED_LABELS) + r")\s*:)",
+)
+# Period/!/?/: directly followed by capital letter or digit (e.g. a date) → insert space.
+_SENTENCE_GLUE_RE = re.compile(r"([.!?:])(?=[A-ZÁÉÍÓÚÑ\d])")
+
+
+def _format_jira_description(text: str) -> str:
+    """Cosmetic fix-up for Jira descriptions that arrive with glued sentences.
+
+    - Splits on common section labels (Contexto, Descripción, Pasos…).
+    - Adds a space after `.`/`!`/`?` when followed directly by a capital
+      letter or digit (frequent pattern: `...18/03/2026.De hecho...`).
+    """
+    if not text:
+        return ""
+    fixed = _SENTENCE_GLUE_RE.sub(r"\1 ", text)
+    fixed = _LABEL_BREAK_RE.sub("\n\n", fixed)
+    return fixed
+
+
 def render(cluster_id: str):
     storage = Storage()
-    cluster = next(
-        (c for c in storage.get_clusters() if c["cluster_id"] == cluster_id),
-        None,
-    )
+    all_clusters = storage.get_clusters()
+    cluster = next((c for c in all_clusters if c["cluster_id"] == cluster_id), None)
 
     if not cluster:
         st.error(f"Cluster `{cluster_id}` no encontrado.")
@@ -57,6 +101,11 @@ def render(cluster_id: str):
             _goto_list()
         return
 
+    if cluster.get("estado") == "refined":
+        _render_refined_parent(cluster, all_clusters)
+        return
+
+    _render_breadcrumb(cluster)
     _render_header(cluster)
     st.markdown("---")
 
@@ -74,6 +123,45 @@ def render(cluster_id: str):
         z_idx=z_selected,
         j_idx=j_selected,
         jira_pool_by_id=jira_pool_by_id,
+    )
+
+
+# ── Refined parent + breadcrumb ──────────────────────────────
+def _render_refined_parent(cluster: dict, all_clusters: list[dict]) -> None:
+    st.title(f"🧬 {cluster['nombre']}")
+    if st.button("← Volver a clusters"):
+        _goto_list()
+    hijos = [c for c in all_clusters if c.get("parent_cluster_id") == cluster["cluster_id"]]
+    st.warning(
+        f"Este cluster se dividió en {len(hijos)} sub-cluster(s) en el paso "
+        "de refine (Fase 3.5). Selecciona uno para ver su detalle:"
+    )
+    if not hijos:
+        st.caption("_Sin sub-clusters activos (anomalía)._")
+        return
+    for h in hijos:
+        cid = h["cluster_id"]
+        subtipo = h.get("subtipo") or "—"
+        nombre = h.get("nombre", "")
+        count = h.get("ticket_count", 0)
+        st.markdown(
+            f"- **[{cid}](?cluster={cid})** — `{subtipo}` · "
+            f"{nombre} · {count} tickets"
+        )
+    st.caption(
+        f"Padre refinado `{cluster.get('refined_at', '')[:19]}` · "
+        f"`{cluster.get('sistema', '—')}` / `{cluster.get('tipo_problema', '—')}`"
+    )
+
+
+def _render_breadcrumb(cluster: dict) -> None:
+    parent = cluster.get("parent_cluster_id")
+    if not parent:
+        return
+    subtipo = cluster.get("subtipo") or "—"
+    st.caption(
+        f"← [{parent}](?cluster={parent}) / **{cluster['cluster_id']}** "
+        f"— subtipo: `{subtipo}`"
     )
 
 
@@ -156,13 +244,15 @@ def _render_jira_table(col, jira_items: list, cluster_id: str) -> int | None:
         rows = []
         for item in jira_items:
             if isinstance(item, str):
-                rows.append({"ID": item, "Resumen": "", "Estado": "—", "Conf.": "—"})
+                rows.append({"ID": item, "📧": "", "Resumen": "", "Estado": "—", "Conf.": "—"})
             else:
                 conf = item.get("confianza")
                 conf_str = f"{int(conf * 100)}%" if isinstance(conf, (int, float)) else "—"
+                em_flag = "📧" if item.get("email_match") else ""
                 rows.append(
                     {
                         "ID": item.get("jira_id", "?"),
+                        "📧": em_flag,
                         "Resumen": (item.get("summary") or "").strip()[:80],
                         "Estado": item.get("status") or "—",
                         "Conf.": conf_str,
@@ -215,9 +305,155 @@ def _render_detail_panels(tickets, jira_items, z_idx, j_idx, jira_pool_by_id):
             st.caption("_Selecciona un candidato Jira para ver su detalle_")
 
 
-def _render_ticket_body(text: str) -> None:
-    import html as _html
+# ── Conversation (Zendesk comments) ───────────────────────────
+_ROLE_STYLE = {
+    "end-user": {"icon": "👤", "label": "Peticionario", "accent": "#0969da", "bg": "#ddf4ff"},
+    "agent":    {"icon": "🎧", "label": "Agente",       "accent": "#1a7f37", "bg": "#dafbe1"},
+    "admin":    {"icon": "🎧", "label": "Agente",       "accent": "#1a7f37", "bg": "#dafbe1"},
+}
+_ROLE_FALLBACK = {"icon": "❓", "label": "—", "accent": "#656d76", "bg": "#eaeef2"}
+_INTERNAL_BG = "#fff8c5"   # yellow note
+_INTERNAL_BORDER = "#d4a72c"
 
+
+def _load_ticket_comments(ticket_id) -> list[dict] | None:
+    """Fetch + memoize comments per ticket. Returns None on error (caller falls back)."""
+    if ticket_id is None:
+        return None
+    cache = st.session_state.setdefault("_zendesk_comments_cache", {})
+    if ticket_id in cache:
+        return cache[ticket_id]
+    try:
+        with st.spinner("Cargando conversación desde Zendesk…"):
+            client = ZendeskClient()
+            comments = client.get_ticket_comments(int(ticket_id))
+    except Exception as e:
+        st.warning(f"No se pudo cargar la conversación: {e}")
+        cache[ticket_id] = None
+        return None
+    cache[ticket_id] = comments
+    return comments
+
+
+_MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def _format_created_at(iso: str) -> tuple[str, str]:
+    """Return (date_label, time_label) like ('16 abr 2026', '11:18')."""
+    if not iso:
+        return ("—", "")
+    from datetime import datetime
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return (iso[:10], iso[11:16])
+    return (f"{dt.day:02d} {_MESES_ES[dt.month - 1]} {dt.year}", dt.strftime("%H:%M"))
+
+
+def _pick_requester(comments: list[dict] | None, ticket: dict) -> dict | None:
+    """Resolve the requester from the loaded conversation.
+
+    Prefer the first `end-user` comment (Zendesk's canonical requester). Fall
+    back to the very first comment if no end-user is present (some tickets are
+    created API-side by an agent on behalf of someone).
+    """
+    if not comments:
+        rid = ticket.get("requester_id")
+        return {"name": "—", "email": "", "id": rid} if rid else None
+    for c in comments:
+        author = c.get("author") or {}
+        if author.get("role") == "end-user":
+            return author
+    return (comments[0].get("author") or {}) or None
+
+
+def _render_requester_pill(author: dict) -> None:
+    name = _html.escape(author.get("name") or "—")
+    email = _html.escape(author.get("email") or "")
+    email_html = (
+        f'<a href="mailto:{email}" style="color:#0969da;text-decoration:none;">&lt;{email}&gt;</a>'
+        if email else '<span style="color:#6e7781;">sin email</span>'
+    )
+    st.markdown(
+        f'<div style="margin:0.35rem 0 0.6rem 0;font-size:0.9rem;">'
+        f'<span style="background:#ddf4ff;color:#0969da;padding:3px 10px;'
+        f'border-radius:12px;font-weight:600;">👤 Peticionario</span>'
+        f'<span style="margin-left:10px;">{name}</span>'
+        f'<span style="margin-left:8px;">{email_html}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _role_style(role: str, name: str) -> dict:
+    """Pick a visual style. If role is unknown but author looks like a bot/system, flag it."""
+    if role in _ROLE_STYLE:
+        return _ROLE_STYLE[role]
+    lname = (name or "").lower()
+    if "bot" in lname or "system" in lname:
+        return {"icon": "🤖", "label": "Sistema", "accent": "#8250df", "bg": "#fbefff"}
+    return _ROLE_FALLBACK
+
+
+def _render_conversation(comments: list[dict]) -> None:
+    for c in comments:
+        author = c.get("author") or {}
+        role = author.get("role") or "unknown"
+        name = author.get("name") or "—"
+        style = _role_style(role, name)
+        is_internal = not c.get("public", True)
+        accent = _INTERNAL_BORDER if is_internal else style["accent"]
+        bg = _INTERNAL_BG if is_internal else style["bg"]
+
+        name_e = _html.escape(name)
+        email_e = _html.escape(author.get("email") or "")
+        channel_e = _html.escape(c.get("channel") or "")
+        date_label, time_label = _format_created_at(c.get("created_at") or "")
+        body_escaped = _html.escape(c.get("body") or "")
+
+        badge_color = "#d4a72c" if is_internal else "#1f883d"
+        badge_text = "Interna" if is_internal else "Pública"
+        badge = (
+            f'<span style="background:{badge_color};color:#fff;font-size:0.7rem;'
+            f'padding:1px 8px;border-radius:10px;">{badge_text}</span>'
+        )
+        email_html = (
+            f'<span style="color:#57606a;font-size:0.8rem;">&lt;{email_e}&gt;</span>'
+            if email_e else ""
+        )
+        channel_html = (
+            f'<span style="background:#eaeef2;color:#57606a;font-size:0.7rem;'
+            f'padding:1px 8px;border-radius:10px;">{channel_e}</span>'
+            if channel_e else ""
+        )
+        time_html = (
+            f'<span style="color:#24292f;font-size:0.78rem;font-variant-numeric:tabular-nums;">'
+            f'📅 {date_label} · 🕒 {time_label}</span>'
+        )
+
+        # IMPORTANT: one line, no leading indentation. Streamlit's markdown
+        # treats 4-space-indented lines as a code block, which previously
+        # exposed the raw <span> HTML inside the cards.
+        card = (
+            f'<div style="border-left:4px solid {accent};background:{bg};'
+            f'padding:0.6rem 0.9rem;margin:0.45rem 0;border-radius:4px;'
+            f'max-width:100%;box-sizing:border-box;">'
+            f'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;'
+            f'margin-bottom:0.45rem;font-size:0.85rem;">'
+            f'<span style="font-weight:600;">{style["icon"]} {style["label"]}: {name_e}</span>'
+            f'{email_html}{badge}{channel_html}'
+            f'</div>'
+            f'<div style="margin-bottom:0.4rem;">{time_html}</div>'
+            f'<div style="font-size:0.88rem;line-height:1.5;color:#24292f;'
+            f'white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;'
+            f'max-height:260px;overflow-y:auto;background:#ffffffaa;'
+            f'padding:0.5rem 0.7rem;border-radius:3px;">{body_escaped}</div>'
+            f'</div>'
+        )
+        st.markdown(card, unsafe_allow_html=True)
+
+
+def _render_ticket_body(text: str) -> None:
     escaped = _html.escape(text)
     st.markdown(
         f"""
@@ -264,10 +500,18 @@ def _render_zendesk_detail(t: dict):
         f" · Fase1 {conf:.0%} ({t.get('fase1_modelo') or '—'})"
     )
 
-    body_clean = _strip_html(t.get("body_preview") or "")
-    if body_clean:
-        st.markdown("**Cuerpo del ticket:**")
-        _render_ticket_body(body_clean)
+    comments = _load_ticket_comments(tid)
+    requester = _pick_requester(comments, t)
+    if requester:
+        _render_requester_pill(requester)
+    if comments:
+        st.markdown("**Conversación:**")
+        _render_conversation(comments)
+    else:
+        body_clean = _strip_html(t.get("body_preview") or "")
+        if body_clean:
+            st.markdown("**Cuerpo del ticket:**")
+            _render_ticket_body(body_clean)
 
     if t.get("fase3_resumen_llm"):
         st.markdown(f"**Resumen LLM:** {t['fase3_resumen_llm']}")
@@ -300,11 +544,16 @@ def _render_jira_detail(item, jira_pool_by_id: dict | None = None, hide_razon: b
 
     meta_cols = st.columns(2)
     meta_cols[0].markdown(f"**Estado:** `{status}`")
-    meta_cols[1].markdown(f"**Confianza del match:** `{conf_str}`")
+    meta_cols[1].metric("Confianza del match", conf_str)
+
+    em = item.get("email_match") or []
+    if em:
+        emails = ", ".join(e.get("email", "") for e in em if e.get("email"))
+        st.success(f"📧 **Match por email de usuario:** `{emails}`")
 
     pool_entry = (jira_pool_by_id or {}).get(jid) if jira_pool_by_id else None
     description = item.get("description_text") or (pool_entry.get("description_text") if pool_entry else "")
-    body_clean = _strip_html(description or "")
+    body_clean = _format_jira_description(_strip_html(description or ""))
     if body_clean:
         st.markdown("**Descripción:**")
         _render_ticket_body(body_clean)

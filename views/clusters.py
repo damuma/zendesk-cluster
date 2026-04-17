@@ -23,6 +23,17 @@ def render():
     storage   = Storage()
     all_tickets = storage.get_tickets()
     clusters    = storage.get_clusters(estado="abierto")
+    # Padres refinados (estado="refined") son opcionalmente visibles; por defecto
+    # se ocultan del listado principal porque el detalle relevante vive en sus
+    # hijos CLU-NNN-A/B/…
+    refined_parents = [c for c in storage.get_clusters() if c.get("estado") == "refined"]
+    mostrar_refinados = st.sidebar.checkbox(
+        f"Mostrar padres refinados ({len(refined_parents)})",
+        value=False,
+        help="Clusters que la Fase 3.5 dividió en sub-clusters. El contenido real está en los hijos.",
+    )
+    if mostrar_refinados:
+        clusters = clusters + refined_parents
 
     if not clusters:
         st.info("No hay clusters activos. Ejecuta el pipeline: `python pipeline.py --horas 24`")
@@ -145,10 +156,22 @@ def render():
         _jira_count = len(cluster.get("jira_candidatos", []) or [])
         jira_badge = f" · 🔷 {_jira_count}" if _jira_count else ""
         cid = cluster["cluster_id"]
+        is_refined_parent = cluster.get("estado") == "refined"
+        is_child = bool(cluster.get("parent_cluster_id"))
+        prefix_icon = "🧬" if is_refined_parent else ("🔬" if is_child else icon)
+        subtipo = cluster.get("subtipo")
+        subtipo_chip = f" · `{subtipo}`" if subtipo else ""
 
-        with st.expander(f"{icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}{jira_badge}"):
+        with st.expander(
+            f"{prefix_icon} **{cluster['nombre']}** · {cluster.get('ticket_count', 0)} tickets {tend}{jira_badge}{subtipo_chip}"
+        ):
             col1, col2 = st.columns([3, 1])
             with col1:
+                if is_refined_parent:
+                    st.info("🧬 Padre refinado — el contenido vive en los sub-clusters hijos.")
+                if is_child:
+                    parent = cluster.get("parent_cluster_id")
+                    st.caption(f"↑ Hijo de [{parent}](?cluster={parent})")
                 st.markdown(f"**Resumen:** {cluster.get('resumen', '_Sin resumen_')}")
                 st.markdown(f"**Sistema:** `{cluster.get('sistema', '—')}` · **Tipo:** `{cluster.get('tipo_problema', '—')}`")
                 st.caption(
