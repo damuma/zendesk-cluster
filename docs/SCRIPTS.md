@@ -190,3 +190,52 @@ python scripts/tag_ticket.py <ticket_id> <tag> [tag2 ...]
 python scripts/tag_ticket.py 538248 error_acceso
 python scripts/tag_ticket.py 538248 error_acceso cluster_clu091
 ```
+
+---
+
+## `extraer_socios_apoya.py` — Remitentes a socios@ / apoya@ en una ventana
+
+Lista, por buzón, las personas que escribieron a `socios@eldiario.es` y `apoya@eldiario.es`
+dentro de una ventana temporal y que **no volvieron a contactar** después. Documentación
+completa y reglas de negocio en [`EXTRACCION_SOCIOS_APOYA.md`](EXTRACCION_SOCIOS_APOYA.md).
+
+```
+python extraer_socios_apoya.py [flags]
+```
+
+| Flag | Default | Descripción |
+|------|---------|-------------|
+| `--start` | `2026-03-04` | Inicio de ventana (incluido), `YYYY-MM-DD` |
+| `--window-end` | `2026-04-08` | Fin de ventana (incluido), `YYYY-MM-DD` |
+| `--output-dir` | `data/socios_apoya` | Carpeta de salida de los CSV |
+| `--users-cache` | `data/zendesk_users.json` | Cache id→email de usuarios Zendesk |
+| `--exclude-domains` | `eldiario.es` | Dominios de remitente a excluir (internos). Vacío = ninguno |
+
+**Salida:** `{socios,apoya}_mantener.csv`, `{socios,apoya}_descartar.csv` y, si aplica,
+`sin_atribuir.csv` en `--output-dir`. Fechas en horario Europe/Madrid; descarte global
+(vale cualquiera de los dos buzones a partir del día siguiente al fin de ventana).
+
+**Ejemplos:**
+
+```bash
+python extraer_socios_apoya.py                                  # petición estándar
+python extraer_socios_apoya.py --start 2026-01-01 --window-end 2026-01-31
+python extraer_socios_apoya.py --exclude-domains                # incluye internos @eldiario.es
+```
+
+---
+
+## `scripts/socios_apoya_a_excel.py` — CSV de socios/apoya → Excel formateado
+
+Combina los CSV generados por `extraer_socios_apoya.py` en un único `.xlsx` con una pestaña
+por lista (más una de resumen), cabecera fija y autofiltro. Resume las columnas `contacto_N`
+a primer/segundo/tercer contacto + «otras interacciones». Ver [`EXTRACCION_SOCIOS_APOYA.md`](EXTRACCION_SOCIOS_APOYA.md).
+
+```
+python scripts/socios_apoya_a_excel.py [flags]
+```
+
+| Flag | Default | Descripción |
+|------|---------|-------------|
+| `--input-dir` | `data/socios_apoya` | Carpeta con los CSV de entrada |
+| `--output` | `<input-dir>/socios_apoya.xlsx` | Ruta del `.xlsx` de salida |

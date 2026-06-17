@@ -26,6 +26,15 @@ class ZendeskClient:
         since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
         return self._fetch_since(since, exclude_statuses=exclude_statuses)
 
+    def get_tickets_created_since(self, since: datetime, exclude_statuses: tuple[str, ...] = DEFAULT_EXCLUDED_STATUSES) -> list[dict]:
+        """Fetch every ticket created/updated since an absolute datetime.
+
+        Thin public wrapper over the incremental export. Pass
+        `exclude_statuses=()` to include closed/archived tickets (required for
+        historical extractions where most tickets are already closed).
+        """
+        return self._fetch_since(since, exclude_statuses=exclude_statuses)
+
     def _fetch_since(self, since: datetime, exclude_statuses: tuple[str, ...] = DEFAULT_EXCLUDED_STATUSES) -> list[dict]:
         """Fetch tickets created/updated since a datetime using Zendesk incremental export API.
 
@@ -165,6 +174,7 @@ class ZendeskClient:
             "priority": t.get("priority"),
             "ticket_type": t.get("type"),
             "channel": t.get("via", {}).get("channel", "unknown"),
+            "recipient": t.get("recipient"),
             "tags": t.get("tags", []),
             "requester_id": requester_id,
             "requester_email": requester_email,
