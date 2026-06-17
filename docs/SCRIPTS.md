@@ -210,6 +210,8 @@ python extraer_socios_apoya.py [flags]
 | `--output-dir` | `data/socios_apoya` | Carpeta de salida de los CSV |
 | `--users-cache` | `data/zendesk_users.json` | Cache id→email de usuarios Zendesk |
 | `--exclude-domains` | `eldiario.es` | Dominios de remitente a excluir (internos). Vacío = ninguno |
+| `--thread-replies` | off | Descarta también a quien respondió dentro de su mismo hilo a socios/apoya tras el fin de ventana (descarga comentarios, lento) |
+| `--raw-cache` | — | Ruta JSON para cachear/reutilizar los tickets descargados entre re-ejecuciones |
 
 **Salida:** `{socios,apoya}_mantener.csv`, `{socios,apoya}_descartar.csv` y, si aplica,
 `sin_atribuir.csv` en `--output-dir`. Fechas en horario Europe/Madrid; descarte global
@@ -218,8 +220,9 @@ python extraer_socios_apoya.py [flags]
 **Ejemplos:**
 
 ```bash
-python extraer_socios_apoya.py                                  # petición estándar
-python extraer_socios_apoya.py --start 2026-01-01 --window-end 2026-01-31
+python extraer_socios_apoya.py                                  # rápido (solo ticket nuevo)
+python extraer_socios_apoya.py --thread-replies \
+    --raw-cache data/socios_apoya/_raw_tickets.json             # criterio estricto (entrega)
 python extraer_socios_apoya.py --exclude-domains                # incluye internos @eldiario.es
 ```
 

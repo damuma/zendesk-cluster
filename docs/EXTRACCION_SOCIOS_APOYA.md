@@ -35,7 +35,8 @@ atribuibles a socios/apoya y se ignoran (se registran en `sin_atribuir.csv` si t
 |------|----------|
 | **Ventana** | 4-mar-2026 → 8-abr-2026, **ambos días incluidos** |
 | **Zona horaria** | Las fechas se interpretan en **Europe/Madrid** (lo que ve un humano), no en UTC |
-| **"Volvió a contactar"** | Cualquier ticket a **socios o apoya** (cualquiera de los dos buzones) con fecha **>= 9-abr-2026**. Si la persona vuelve a escribir a un buzón distinto del de la ventana, **también** se descarta |
+| **"Volvió a contactar"** | Cualquier contacto a **socios o apoya** (cualquiera de los dos buzones) con fecha **>= 9-abr-2026**. Si la persona vuelve a escribir a un buzón distinto del de la ventana, **también** se descarta |
+| **¿Qué cuenta como "volver a escribir"?** | Con `--thread-replies` (el modo usado en la entrega): un **ticket nuevo** O una **respuesta del propio remitente dentro de su mismo hilo** posterior al 8-abr. Sin el flag, solo cuenta el ticket nuevo (ver sección «Criterio de "volver a escribir"») |
 | **Fecha en el listado** | `contacto_1` = primer contacto en la ventana (principal); `contacto_2`, `contacto_3`… = resto de interacciones en la ventana |
 | **Dominio interno** | Se excluyen los remitentes `@eldiario.es` por defecto (`brainhub@`, `crm@`, `aldia@`, `contacto@`…), porque son remitentes internos/automáticos, no personas |
 | **Tickets cerrados** | **Incluidos** (imprescindible: casi todo el histórico está cerrado) |
@@ -57,13 +58,36 @@ venv/bin/python extraer_socios_apoya.py
 | `--output-dir` | `data/socios_apoya` | Carpeta de salida de los CSV |
 | `--users-cache` | `data/zendesk_users.json` | Cache local id→email de usuarios Zendesk |
 | `--exclude-domains` | `eldiario.es` | Dominios de remitente a excluir. Vacío (`--exclude-domains`) = no excluir ninguno |
+| `--thread-replies` | off | Descarta también a quien **respondió dentro de su mismo hilo** a socios/apoya tras el fin de ventana. Más fiel, pero descarga comentarios de ~2.200 tickets (lento, 30-45 min) |
+| `--raw-cache` | — | Ruta JSON para cachear/reutilizar los tickets descargados y evitar re-bajarlos en re-ejecuciones |
 
 El día de "vuelta a contactar" se calcula automáticamente como `window-end + 1 día`.
+
+### Criterio de "volver a escribir" (`--thread-replies`)
+
+Cada email entrante que abre conversación crea un **ticket**; las contestaciones a esa
+conversación son **comentarios** del mismo ticket, no tickets nuevos. Por eso hay dos
+formas de medir "volvió a escribir tras el 8-abr":
+
+- **Sin `--thread-replies`** (rápido): solo cuenta si abrió un **ticket nuevo** a
+  socios/apoya. No detecta que alguien siguiera respondiendo en su hilo de la ventana.
+- **Con `--thread-replies`** (usado en la entrega): cuenta también las **respuestas del
+  propio remitente** (rol *end-user*) con fecha >= 9-abr dentro de cualquiera de sus
+  tickets a socios/apoya. Para ello descarga los comentarios de los tickets candidatos
+  (solo los actualizados tras el 8-abr). En la lista de descarte estos casos se marcan
+  como `… (resp. en hilo) @ fecha`.
+
+Medido sobre los datos reales: el modo estricto movió **120 remitentes** adicionales a la
+lista de descartados (≈3,4 % de «mantener»).
 
 ### Ejemplos
 
 ```bash
-# Ejecución estándar (la de la petición)
+# Ejecución de la entrega (criterio estricto + cache de crudo)
+venv/bin/python extraer_socios_apoya.py --thread-replies \
+    --raw-cache data/socios_apoya/_raw_tickets.json
+
+# Versión rápida (solo ticket nuevo cuenta como "volver a escribir")
 venv/bin/python extraer_socios_apoya.py
 
 # Otra ventana
@@ -135,12 +159,27 @@ posteriores (motivo de descarte)**.
 
 ## Resultados de la ejecución de referencia (2026-06-17)
 
-Sobre 24.872 tickets descargados (4-mar → 17-jun-2026):
+Sobre 24.882 tickets descargados (4-mar → 17-jun-2026), con `--thread-replies`:
 
 | Buzón | A mantener | Descartados |
 |-------|-----------:|------------:|
-| socios@ | 2.780 | 483 |
-| apoya@ | 726 | 116 |
+| socios@ | 2.662 | 601 |
+| apoya@ | 723 | 119 |
+
+Para comparar, con el criterio rápido (solo ticket nuevo) eran socios@ 2.780/483 y
+apoya@ 726/116; el modo estricto reclasificó 120 remitentes a descartados.
+
+### Verificación (auditoría independiente)
+
+Antes de la entrega se auditó la lógica sobre los datos reales:
+
+- **Sin duplicados**: 24.882 tickets descargados = 24.882 ids únicos.
+- **Recálculo independiente** de mantener/descartar coincide con los CSV.
+- **No se pierden emails**: los 6.594 tickets con `recipient` vacío son canal `web`
+  (6.231), chat `native_messaging` (361) y `api` (2) — **ninguno** es email. Los
+  formularios web/chat no son "emails a socios@/apoya@" y por eso quedan fuera.
+- **Bordes de fecha** exactos: la ventana va de 2026-03-04 a 2026-04-08 (incluidos) y el
+  primer día "posterior" es 2026-04-09.
 
 ### Avisos sobre los datos
 
@@ -149,6 +188,8 @@ Sobre 24.872 tickets descargados (4-mar → 17-jun-2026):
   automático/spam — conviene revisarlo antes de usar la lista para captación.
 - Las direcciones internas `@eldiario.es` (brainhub, crm, aldia, contacto…) se excluyen
   por defecto. Si se necesitaran, usar `--exclude-domains` sin argumentos.
+- Quien escribió **también antes** del 4-mar entra igualmente si escribió en la ventana
+  (es lo que pide la petición: contactos dentro del periodo, no "primer contacto").
 
 ## Notas técnicas
 
